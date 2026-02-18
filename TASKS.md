@@ -102,10 +102,10 @@ cargo test --test builder_api --test config_validation --test selector_rules --t
 
 ### Required Changes
 
-- [ ] Refactor `StorageEngine` to stream-based store contract compatible with third-party backends.
-- [ ] Support backend-specific output type while preserving ergonomic defaults.
-- [ ] Add `DiskStorage` filter hook and PRD-aligned builder naming (`destination`, `filename`).
-- [ ] Keep filename sanitization secure-by-default and test traversal/null-byte cases.
+- [x] Refactor `StorageEngine` to stream-based store contract compatible with third-party backends.
+- [x] Support backend-specific output type while preserving ergonomic defaults.
+- [x] Add `DiskStorage` filter hook and PRD-aligned builder naming (`destination`, `filename`).
+- [x] Keep filename sanitization secure-by-default and test traversal/null-byte cases.
 
 ### Exit Gate
 
@@ -216,7 +216,7 @@ cargo bench --bench upload_bench
 | 02 | Streaming Parser and Memory-Safety | DONE |
 | 03 | RFC 7578 Edge Cases | DONE |
 | 04 | Builder API and Validation Model | DONE |
-| 05 | Storage Trait and Backend Extensibility | TODO |
+| 05 | Storage Trait and Backend Extensibility | DONE |
 | 06 | Part/Multipart Public API Parity | TODO |
 | 07 | Framework Integrations | TODO |
 | 08 | Tracing/Serde/DX Docs | TODO |

@@ -1,6 +1,11 @@
 //! Storage engine abstractions and built-in implementations.
 
-use crate::{Part, StorageError};
+use std::pin::Pin;
+
+use bytes::Bytes;
+use futures::Stream;
+
+use crate::{MulterError, StorageError};
 
 /// Disk-backed storage backend implementation.
 pub mod disk;
@@ -8,6 +13,22 @@ pub mod disk;
 pub mod memory;
 pub use disk::{DiskStorage, DiskStorageBuilder, FilenameStrategy};
 pub use memory::MemoryStorage;
+
+/// Boxed stream type used by storage backends.
+pub type BoxStream<'a, T> = Pin<Box<dyn Stream<Item = T> + 'a>>;
+
+/// Metadata describing a file part before persistence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileMeta {
+    /// Multipart field name.
+    pub field_name: String,
+    /// Original filename from the multipart part, when present.
+    pub file_name: Option<String>,
+    /// Content type observed on the uploaded file part.
+    pub content_type: String,
+    /// Optional backend-specific size hint in bytes.
+    pub size_hint: Option<u64>,
+}
 
 /// Metadata describing a stored file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,9 +49,20 @@ pub struct StoredFile {
 
 /// Async trait abstraction for file storage backends.
 #[async_trait::async_trait(?Send)]
-pub trait StorageEngine: Send + Sync + std::fmt::Debug {
-    /// Stores a file part and returns output metadata.
-    async fn store(&self, part: Part<'_>) -> Result<StoredFile, StorageError>;
+pub trait StorageEngine: Send + Sync + std::fmt::Debug + 'static {
+    /// Backend-specific output type returned after a successful store.
+    type Output: Send;
+    /// Backend-specific error type surfaced on store failure.
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Stores a file stream and returns backend output metadata.
+    async fn store(
+        &self,
+        field_name: &str,
+        file_name: Option<&str>,
+        content_type: &str,
+        stream: BoxStream<'_, Result<Bytes, MulterError>>,
+    ) -> Result<Self::Output, Self::Error>;
 }
 
 /// Placeholder storage implementation used as the default backend.
@@ -39,7 +71,16 @@ pub struct NoopStorage;
 
 #[async_trait::async_trait(?Send)]
 impl StorageEngine for NoopStorage {
-    async fn store(&self, _part: Part<'_>) -> Result<StoredFile, StorageError> {
+    type Output = StoredFile;
+    type Error = StorageError;
+
+    async fn store(
+        &self,
+        _field_name: &str,
+        _file_name: Option<&str>,
+        _content_type: &str,
+        _stream: BoxStream<'_, Result<Bytes, MulterError>>,
+    ) -> Result<Self::Output, Self::Error> {
         Err(StorageError::new(
             "no storage backend configured; choose a concrete storage engine",
         ))

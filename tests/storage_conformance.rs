@@ -3,8 +3,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
-use futures::stream;
-use rust_multer::{Multer, MulterError, Multipart, StorageEngine, StorageError, StoredFile};
+use futures::{StreamExt, stream};
+use rust_multer::{BoxStream, Multer, MulterError, Multipart, StorageEngine, StorageError};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Default)]
@@ -12,27 +12,43 @@ struct MapStorage {
     items: Arc<RwLock<HashMap<String, Bytes>>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MapStoredFile {
+    key: String,
+    field_name: String,
+    file_name: Option<String>,
+    content_type: String,
+    size: u64,
+}
+
 #[async_trait::async_trait(?Send)]
 impl StorageEngine for MapStorage {
-    async fn store(&self, mut part: rust_multer::Part<'_>) -> Result<StoredFile, StorageError> {
-        let key = format!("{}-{}", part.field_name(), self.items.read().await.len());
-        let bytes = part
-            .bytes()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
+    type Output = MapStoredFile;
+    type Error = StorageError;
+
+    async fn store(
+        &self,
+        field_name: &str,
+        file_name: Option<&str>,
+        content_type: &str,
+        mut stream: BoxStream<'_, Result<Bytes, MulterError>>,
+    ) -> Result<Self::Output, Self::Error> {
+        let key = format!("{field_name}-{}", self.items.read().await.len());
+        let mut bytes = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|err| StorageError::new(err.to_string()))?;
+            bytes.extend_from_slice(&chunk);
+        }
+        let bytes = Bytes::from(bytes);
         let size = bytes.len() as u64;
-        let field_name = part.field_name().to_owned();
-        let file_name = part.file_name().map(ToOwned::to_owned);
-        let content_type = part.content_type().clone();
 
         self.items.write().await.insert(key.clone(), bytes);
-        Ok(StoredFile {
-            storage_key: key,
-            field_name,
-            file_name,
-            content_type,
+        Ok(MapStoredFile {
+            key,
+            field_name: field_name.to_owned(),
+            file_name: file_name.map(ToOwned::to_owned),
+            content_type: content_type.to_owned(),
             size,
-            path: None,
         })
     }
 }
@@ -63,7 +79,7 @@ async fn custom_storage_backend_conforms_to_store_contract() {
     assert_eq!(stored.field_name, "doc");
     assert_eq!(stored.size, 5);
     assert_eq!(
-        storage.items.read().await.get(&stored.storage_key).cloned(),
+        storage.items.read().await.get(&stored.key).cloned(),
         Some(Bytes::from_static(b"hello"))
     );
 }

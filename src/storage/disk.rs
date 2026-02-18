@@ -4,14 +4,16 @@ use std::{
     sync::Arc,
 };
 
+use bytes::Bytes;
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-use super::{StorageEngine, StoredFile};
-use crate::{Part, StorageError};
+use super::{BoxStream, FileMeta, StorageEngine, StoredFile};
+use crate::{MulterError, StorageError};
 
 type CustomFilenameFn = dyn Fn(String) -> String + Send + Sync;
+type FileFilterFn = dyn Fn(&FileMeta) -> bool + Send + Sync;
 
 /// Strategy used to derive the final stored filename.
 #[derive(Clone)]
@@ -35,23 +37,44 @@ impl fmt::Debug for FilenameStrategy {
 }
 
 /// Builder for [`DiskStorage`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DiskStorageBuilder {
     root: PathBuf,
     strategy: FilenameStrategy,
+    filter: Option<Arc<FileFilterFn>>,
+}
+
+impl fmt::Debug for DiskStorageBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DiskStorageBuilder")
+            .field("root", &self.root)
+            .field("strategy", &self.strategy)
+            .field("filter", &self.filter.as_ref().map(|_| "<fn>"))
+            .finish()
+    }
 }
 
 impl DiskStorageBuilder {
     /// Sets the directory used for persisted files.
-    pub fn path(mut self, root: impl Into<PathBuf>) -> Self {
+    pub fn destination(mut self, root: impl Into<PathBuf>) -> Self {
         self.root = root.into();
         self
     }
 
+    /// Alias for [`DiskStorageBuilder::destination`].
+    pub fn path(self, root: impl Into<PathBuf>) -> Self {
+        self.destination(root)
+    }
+
     /// Sets how output filenames are generated.
-    pub fn filename_strategy(mut self, strategy: FilenameStrategy) -> Self {
+    pub fn filename(mut self, strategy: FilenameStrategy) -> Self {
         self.strategy = strategy;
         self
+    }
+
+    /// Alias for [`DiskStorageBuilder::filename`].
+    pub fn filename_strategy(self, strategy: FilenameStrategy) -> Self {
+        self.filename(strategy)
     }
 
     /// Sets a custom filename function.
@@ -60,6 +83,15 @@ impl DiskStorageBuilder {
         F: Fn(String) -> String + Send + Sync + 'static,
     {
         self.strategy = FilenameStrategy::Custom(Arc::new(transform));
+        self
+    }
+
+    /// Sets an optional filter to accept or reject files before persistence.
+    pub fn filter<F>(mut self, filter: F) -> Self
+    where
+        F: Fn(&FileMeta) -> bool + Send + Sync + 'static,
+    {
+        self.filter = Some(Arc::new(filter));
         self
     }
 
@@ -72,6 +104,7 @@ impl DiskStorageBuilder {
         Ok(DiskStorage {
             root: self.root,
             strategy: self.strategy,
+            filter: self.filter,
         })
     }
 }
@@ -81,15 +114,27 @@ impl Default for DiskStorageBuilder {
         Self {
             root: std::env::temp_dir().join("rust-multer"),
             strategy: FilenameStrategy::Random,
+            filter: None,
         }
     }
 }
 
 /// Disk-backed storage engine writing files under a configured root path.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DiskStorage {
     root: PathBuf,
     strategy: FilenameStrategy,
+    filter: Option<Arc<FileFilterFn>>,
+}
+
+impl fmt::Debug for DiskStorage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DiskStorage")
+            .field("root", &self.root)
+            .field("strategy", &self.strategy)
+            .field("filter", &self.filter.as_ref().map(|_| "<fn>"))
+            .finish()
+    }
 }
 
 impl DiskStorage {
@@ -98,11 +143,8 @@ impl DiskStorage {
         DiskStorageBuilder::default()
     }
 
-    fn choose_output_name(&self, part: &Part<'_>) -> String {
-        let input_name = part
-            .file_name()
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(random_basename);
+    fn choose_output_name(&self, file_name: Option<&str>) -> String {
+        let input_name = file_name.map(ToOwned::to_owned).unwrap_or_else(random_basename);
 
         let candidate = match &self.strategy {
             FilenameStrategy::Keep => input_name,
@@ -112,19 +154,41 @@ impl DiskStorage {
 
         sanitize_filename(&candidate)
     }
+
+    fn should_store(&self, meta: &FileMeta) -> bool {
+        self.filter.as_ref().is_none_or(|filter| filter(meta))
+    }
 }
 
 #[async_trait::async_trait(?Send)]
 impl StorageEngine for DiskStorage {
-    async fn store(&self, mut part: Part<'_>) -> Result<StoredFile, StorageError> {
+    type Output = StoredFile;
+    type Error = StorageError;
+
+    async fn store(
+        &self,
+        field_name: &str,
+        file_name: Option<&str>,
+        content_type: &str,
+        mut stream: BoxStream<'_, Result<Bytes, MulterError>>,
+    ) -> Result<Self::Output, Self::Error> {
+        let accepted_meta = FileMeta {
+            field_name: field_name.to_owned(),
+            file_name: file_name.map(ToOwned::to_owned),
+            content_type: content_type.to_owned(),
+            size_hint: None,
+        };
+        if !self.should_store(&accepted_meta) {
+            return Err(StorageError::new(format!(
+                "disk storage filter rejected file field `{field_name}`"
+            )));
+        }
+
         tokio::fs::create_dir_all(&self.root)
             .await
             .map_err(|err| StorageError::new(format!("failed to create storage directory: {err}")))?;
 
-        let field_name = part.field_name().to_owned();
-        let file_name = part.file_name().map(ToOwned::to_owned);
-        let content_type = part.content_type().clone();
-        let file_basename = self.choose_output_name(&part);
+        let file_basename = self.choose_output_name(file_name);
 
         let mut output_path = self.root.join(file_basename);
         if tokio::fs::try_exists(&output_path)
@@ -138,9 +202,6 @@ impl StorageEngine for DiskStorage {
             .await
             .map_err(|err| StorageError::new(format!("failed to create output file: {err}")))?;
 
-        let mut stream = part
-            .stream()
-            .map_err(|err| StorageError::new(format!("failed to read part stream: {err}")))?;
         let mut written = 0u64;
 
         while let Some(chunk) = stream.next().await {
@@ -156,11 +217,14 @@ impl StorageEngine for DiskStorage {
             .map_err(|err| StorageError::new(format!("failed to flush output file: {err}")))?;
 
         let storage_key = output_path.to_string_lossy().into_owned();
+        let parsed_content_type = content_type
+            .parse::<mime::Mime>()
+            .unwrap_or(mime::APPLICATION_OCTET_STREAM);
         Ok(StoredFile {
             storage_key,
-            field_name,
-            file_name,
-            content_type,
+            field_name: field_name.to_owned(),
+            file_name: file_name.map(ToOwned::to_owned),
+            content_type: parsed_content_type,
             size: written,
             path: Some(output_path),
         })

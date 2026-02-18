@@ -41,17 +41,26 @@ pub use multipart::Multipart;
 pub use part::Part;
 pub use selector::{SelectorAction, SelectorEngine};
 pub use storage::{
-    DiskStorage, DiskStorageBuilder, FilenameStrategy, MemoryStorage, NoopStorage, StorageEngine,
-    StoredFile,
+    BoxStream, DiskStorage, DiskStorageBuilder, FileMeta, FilenameStrategy, MemoryStorage,
+    NoopStorage, StorageEngine, StoredFile,
 };
 
 /// Processed multipart output returned by [`Multer::parse_and_store`].
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ProcessedMultipart {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessedMultipart<O = StoredFile> {
     /// File parts persisted through the configured storage engine.
-    pub stored_files: Vec<StoredFile>,
+    pub stored_files: Vec<O>,
     /// Text field values collected from the stream.
     pub text_fields: Vec<(String, String)>,
+}
+
+impl<O> Default for ProcessedMultipart<O> {
+    fn default() -> Self {
+        Self {
+            stored_files: Vec::new(),
+            text_fields: Vec::new(),
+        }
+    }
 }
 
 /// Main `rust-multer` entry point.
@@ -92,8 +101,16 @@ where
     S: StorageEngine,
 {
     /// Stores a file part through the configured storage backend.
-    pub async fn store(&self, part: Part<'_>) -> Result<StoredFile, MulterError> {
-        self.storage.store(part).await.map_err(MulterError::from)
+    pub async fn store(&self, mut part: Part<'_>) -> Result<S::Output, MulterError> {
+        let field_name = part.field_name().to_owned();
+        let file_name = part.file_name().map(ToOwned::to_owned);
+        let content_type = part.content_type().to_string();
+        let stream = Box::pin(part.stream()?);
+
+        self.storage
+            .store(&field_name, file_name.as_deref(), &content_type, stream)
+            .await
+            .map_err(|err| MulterError::Storage(StorageError::new(err.to_string())))
     }
 
     /// Creates a configured multipart parser from a raw multipart boundary.
@@ -126,7 +143,7 @@ where
         &self,
         boundary: impl Into<String>,
         stream: T,
-    ) -> Result<ProcessedMultipart, MulterError>
+    ) -> Result<ProcessedMultipart<S::Output>, MulterError>
     where
         T: Stream<Item = Result<Bytes, MulterError>> + Unpin,
     {

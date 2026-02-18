@@ -1,11 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
+use futures::StreamExt;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use super::{StorageEngine, StoredFile};
-use crate::{Part, StorageError};
+use super::{BoxStream, StorageEngine, StoredFile};
+use crate::{MulterError, StorageError};
 
 /// In-memory storage engine keyed by generated UUIDs.
 #[derive(Debug, Clone, Default)]
@@ -37,25 +38,36 @@ impl MemoryStorage {
 
 #[async_trait::async_trait(?Send)]
 impl StorageEngine for MemoryStorage {
-    async fn store(&self, mut part: Part<'_>) -> Result<StoredFile, StorageError> {
-        let field_name = part.field_name().to_owned();
-        let file_name = part.file_name().map(ToOwned::to_owned);
-        let content_type = part.content_type().clone();
-        let body = part
-            .bytes()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
+    type Output = StoredFile;
+    type Error = StorageError;
+
+    async fn store(
+        &self,
+        field_name: &str,
+        file_name: Option<&str>,
+        content_type: &str,
+        mut stream: BoxStream<'_, Result<Bytes, MulterError>>,
+    ) -> Result<Self::Output, Self::Error> {
+        let mut body = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|err| StorageError::new(err.to_string()))?;
+            body.extend_from_slice(&chunk);
+        }
+        let body = Bytes::from(body);
 
         let storage_key = Uuid::new_v4().to_string();
         let size = body.len() as u64;
+        let parsed_content_type = content_type
+            .parse::<mime::Mime>()
+            .unwrap_or(mime::APPLICATION_OCTET_STREAM);
 
         self.files.write().await.insert(storage_key.clone(), body);
 
         Ok(StoredFile {
             storage_key,
-            field_name,
-            file_name,
-            content_type,
+            field_name: field_name.to_owned(),
+            file_name: file_name.map(ToOwned::to_owned),
+            content_type: parsed_content_type,
             size,
             path: None,
         })

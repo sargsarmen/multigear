@@ -3,8 +3,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
-use futures::stream;
-use rust_multer::{Multer, MulterError, Part, StorageEngine, StorageError, StoredFile};
+use futures::{StreamExt, stream};
+use rust_multer::{BoxStream, Multer, MulterError, StorageEngine, StorageError};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Default)]
@@ -12,28 +12,33 @@ struct HashMapStorage {
     files: Arc<RwLock<HashMap<String, Bytes>>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HashMapKey(String);
+
 #[async_trait::async_trait(?Send)]
 impl StorageEngine for HashMapStorage {
-    async fn store(&self, mut part: Part<'_>) -> Result<StoredFile, StorageError> {
-        let key = format!("{}-{}", part.field_name(), self.files.read().await.len());
-        let content = part
-            .bytes()
-            .await
-            .map_err(|err| StorageError::new(err.to_string()))?;
-        let size = content.len() as u64;
-        let field_name = part.field_name().to_owned();
-        let file_name = part.file_name().map(ToOwned::to_owned);
-        let content_type = part.content_type().clone();
+    type Output = HashMapKey;
+    type Error = StorageError;
 
-        self.files.write().await.insert(key.clone(), content);
-        Ok(StoredFile {
-            storage_key: key,
-            field_name,
-            file_name,
-            content_type,
-            size,
-            path: None,
-        })
+    async fn store(
+        &self,
+        field_name: &str,
+        _file_name: Option<&str>,
+        _content_type: &str,
+        mut stream: BoxStream<'_, Result<Bytes, MulterError>>,
+    ) -> Result<Self::Output, Self::Error> {
+        let key = format!("{field_name}-{}", self.files.read().await.len());
+        let mut content = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|err| StorageError::new(err.to_string()))?;
+            content.extend_from_slice(&chunk);
+        }
+
+        self.files
+            .write()
+            .await
+            .insert(key.clone(), Bytes::from(content));
+        Ok(HashMapKey(key))
     }
 }
 

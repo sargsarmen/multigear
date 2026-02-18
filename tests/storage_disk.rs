@@ -5,14 +5,15 @@ use std::path::PathBuf;
 use bytes::Bytes;
 use futures::{channel::mpsc, stream};
 use rust_multer::{DiskStorage, FilenameStrategy, Multer, MulterError, Multipart};
+use rust_multer::storage::disk::sanitize_filename;
 use uuid::Uuid;
 
 #[tokio::test]
 async fn keep_strategy_sanitizes_filename_and_writes_to_disk() {
     let root = temp_root();
     let storage = DiskStorage::builder()
-        .path(&root)
-        .filename_strategy(FilenameStrategy::Keep)
+        .destination(&root)
+        .filename(FilenameStrategy::Keep)
         .build()
         .expect("builder should succeed");
     let multer = Multer::new(storage);
@@ -43,8 +44,8 @@ async fn keep_strategy_sanitizes_filename_and_writes_to_disk() {
 async fn random_strategy_generates_distinct_paths() {
     let root = temp_root();
     let storage = DiskStorage::builder()
-        .path(&root)
-        .filename_strategy(FilenameStrategy::Random)
+        .destination(&root)
+        .filename(FilenameStrategy::Random)
         .build()
         .expect("builder should succeed");
     let multer = Multer::new(storage);
@@ -71,7 +72,7 @@ async fn random_strategy_generates_distinct_paths() {
 async fn custom_strategy_applies_transform() {
     let root = temp_root();
     let storage = DiskStorage::builder()
-        .path(&root)
+        .destination(&root)
         .custom_filename(|incoming| format!("prefix-{incoming}"))
         .build()
         .expect("builder should succeed");
@@ -93,6 +94,43 @@ async fn custom_strategy_applies_transform() {
     assert!(file_name.starts_with("prefix-report"));
 
     cleanup(root).await;
+}
+
+#[tokio::test]
+async fn disk_filter_can_reject_files_before_write() {
+    let root = temp_root();
+    let storage = DiskStorage::builder()
+        .destination(&root)
+        .filename(FilenameStrategy::Keep)
+        .filter(|meta| meta.file_name.as_deref() != Some("reject.txt"))
+        .build()
+        .expect("builder should succeed");
+    let multer = Multer::new(storage);
+
+    let body = multipart_body(&[("upload", "reject.txt", "text/plain", "hello")]);
+    let mut multipart =
+        Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
+    let part = multipart
+        .next_part().await.expect("part should parse").expect("part expected");
+
+    let err = multer.store(part).await.expect_err("filter should reject file");
+    assert!(err.to_string().contains("filter rejected"));
+    assert!(!tokio::fs::try_exists(&root).await.expect("try_exists should succeed"));
+
+    cleanup(root).await;
+}
+
+#[test]
+fn sanitize_filename_rejects_traversal_and_null_bytes() {
+    let traversal = sanitize_filename("../../etc/passwd");
+    assert!(!traversal.contains(".."));
+    assert!(!traversal.contains('/'));
+    assert!(!traversal.contains('\\'));
+
+    let nul = sanitize_filename("..\\..\\nul\0byte?.txt");
+    assert!(!nul.contains('\0'));
+    assert!(!nul.contains(".."));
+    assert!(!nul.contains('?'));
 }
 
 fn temp_root() -> PathBuf {
@@ -127,8 +165,8 @@ fn bytes_stream(body: Vec<u8>) -> impl futures::Stream<Item = Result<Bytes, Mult
 async fn streams_large_file_to_disk_from_chunked_input() {
     let root = temp_root();
     let storage = DiskStorage::builder()
-        .path(&root)
-        .filename_strategy(FilenameStrategy::Random)
+        .destination(&root)
+        .filename(FilenameStrategy::Random)
         .build()
         .expect("builder should succeed");
     let multer = Multer::new(storage);
