@@ -146,13 +146,15 @@ Level 2 uses `features = ["hyper"]` and `rust_multer::hyper::MulterService`.
 
 ## Examples
 
-Examples live under `examples/*.rs` and can be run with `cargo run --example <name>`.
+Examples live under `examples/<name>/src/main.rs` and can be run with `cargo run --example <name>`.
 
 - `cargo run --example custom_storage`
-- `cargo run --example streaming_large_file`
-- `cargo run --example field_validation`
-- `cargo run --example axum_basic --features axum`
-- `cargo run --example actix_basic --features actix`
+- `cargo run --example axum_memory --features axum`
+- `cargo run --example axum_disk --features axum`
+- `cargo run --example axum_fields --features axum`
+- `cargo run --example actix_memory --features actix`
+- `cargo run --example actix_disk --features actix`
+- `cargo run --example actix_fields --features actix`
 - `cargo run --example hyper_raw --features hyper`
 - `cargo run --example hyper_service --features hyper`
 

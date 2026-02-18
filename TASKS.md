@@ -49,7 +49,7 @@ cargo +1.88.0 check --all-targets --all-features
 
 ```bash
 cargo test --test parser_streaming --test limits_enforcement --test storage_disk
-cargo run --example streaming_large_file
+cargo run --example axum_disk --features axum
 ```
 
 ## Task 03 - Change Category: RFC 7578 Edge-Case Parsing
@@ -155,8 +155,8 @@ cargo test --test part_api --test e2e_core
 ```bash
 cargo check --all-targets --features axum
 cargo check --all-targets --features actix
-cargo run --example axum_basic --features axum
-cargo run --example actix_basic --features actix
+cargo run --example axum_memory --features axum
+cargo run --example actix_memory --features actix
 ```
 
 ## Task 08 - Change Category: Tracing, Serde, and Developer Experience

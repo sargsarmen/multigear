@@ -1,15 +1,10 @@
-#![allow(missing_docs)]
+﻿#![allow(missing_docs)]
 
-#[cfg(feature = "hyper")]
 use bytes::Bytes;
-#[cfg(feature = "hyper")]
 use http_body_util::{BodyExt, Full};
-#[cfg(feature = "hyper")]
 use hyper::{header, Request};
-#[cfg(feature = "hyper")]
 use rust_multer::{DiskStorage, FilenameStrategy, Multer};
 
-#[cfg(feature = "hyper")]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let storage = DiskStorage::builder()
@@ -45,7 +40,6 @@ async fn main() {
         .expect("content type should exist");
     let boundary = rust_multer::extract_boundary(content_type).expect("boundary should parse");
 
-    // hyper bridge: convert Body into Stream and hand it to parse_stream()
     let stream = request.into_body().into_data_stream();
     let mut multipart = multer
         .parse_stream(stream, boundary)
@@ -59,15 +53,10 @@ async fn main() {
         .expect("part parse should succeed")
     {
         if part.file_name().is_some() {
-            let _ = multer.store(part).await.expect("storage should succeed");
+            let _stored_file = multer.store(part).await.expect("storage should succeed");
             stored += 1;
         }
     }
 
     println!("stored {stored} file(s) via hyper Level 1 bridge");
-}
-
-#[cfg(not(feature = "hyper"))]
-fn main() {
-    println!("Enable the `hyper` feature to run this example.");
 }

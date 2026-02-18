@@ -1,18 +1,12 @@
-#![allow(missing_docs)]
+﻿#![allow(missing_docs)]
 
-#[cfg(feature = "hyper")]
 use std::sync::Arc;
 
-#[cfg(feature = "hyper")]
 use bytes::Bytes;
-#[cfg(feature = "hyper")]
 use http_body_util::Full;
-#[cfg(feature = "hyper")]
 use hyper::{header, service::Service, Request, Response};
-#[cfg(feature = "hyper")]
 use rust_multer::{hyper::MulterService, DiskStorage, FilenameStrategy, Multer, StoredFile};
 
-#[cfg(feature = "hyper")]
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let storage = DiskStorage::builder()
@@ -52,9 +46,4 @@ async fn main() {
 
     let response = service.call(request).await.expect("service should succeed");
     println!("hyper service status: {}", response.status());
-}
-
-#[cfg(not(feature = "hyper"))]
-fn main() {
-    println!("Enable the `hyper` feature to run this example.");
 }

@@ -3,6 +3,7 @@ name = "rust-multer"
 version = "1.0.0"
 edition = "2021"
 rust-version = "1.75"
+autoexamples = false
 license = "MIT OR Apache-2.0"
 description = "Framework-agnostic multipart/form-data parser for Rust"
 keywords = ["multipart", "upload", "axum", "actix", "hyper"]
@@ -44,6 +45,50 @@ criterion = { version = "0.5", features = ["async_tokio"] }
 [[bench]]
 name = "upload_bench"
 harness = false
+
+[[example]]
+name = "axum_memory"
+path = "examples/axum_memory/src/main.rs"
+required-features = ["axum"]
+
+[[example]]
+name = "axum_disk"
+path = "examples/axum_disk/src/main.rs"
+required-features = ["axum"]
+
+[[example]]
+name = "axum_fields"
+path = "examples/axum_fields/src/main.rs"
+required-features = ["axum"]
+
+[[example]]
+name = "actix_memory"
+path = "examples/actix_memory/src/main.rs"
+required-features = ["actix"]
+
+[[example]]
+name = "actix_disk"
+path = "examples/actix_disk/src/main.rs"
+required-features = ["actix"]
+
+[[example]]
+name = "actix_fields"
+path = "examples/actix_fields/src/main.rs"
+required-features = ["actix"]
+
+[[example]]
+name = "hyper_raw"
+path = "examples/hyper_raw/src/main.rs"
+required-features = ["hyper"]
+
+[[example]]
+name = "hyper_service"
+path = "examples/hyper_service/src/main.rs"
+required-features = ["hyper"]
+
+[[example]]
+name = "custom_storage"
+path = "examples/custom_storage/src/main.rs"
 
 [lints.rust]
 missing_docs = "warn"

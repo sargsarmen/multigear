@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+﻿#![allow(missing_docs)]
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -65,5 +65,3 @@ async fn main() {
 
     println!("stored files: {}", output.stored_files.len());
 }
-
-
