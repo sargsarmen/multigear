@@ -40,10 +40,10 @@ cargo +1.88.0 check --all-targets --all-features
 
 ### Required Changes
 
-- [ ] Redesign parser/part pipeline to stream file bytes incrementally (no full-part buffering).
-- [ ] Ensure file and body limits are enforced during chunk flow, before full payload accumulation.
-- [ ] Ensure disk storage can consume streamed chunks directly from parser.
-- [ ] Add large-file streaming tests to prove no OOM behavior on constrained memory profiles.
+- [x] Redesign parser/part pipeline to stream file bytes incrementally (no full-part buffering).
+- [x] Ensure file and body limits are enforced during chunk flow, before full payload accumulation.
+- [x] Ensure disk storage can consume streamed chunks directly from parser.
+- [x] Add large-file streaming tests to prove no OOM behavior on constrained memory profiles.
 
 ### Exit Gate
 
@@ -194,7 +194,7 @@ cargo check --all-features
 ### Required Changes
 
 - [ ] Expand CI matrix to Linux/macOS/Windows.
-- [ ] Add dedicated MSRV 1.75 job.
+- [ ] Add dedicated MSRV 1.88 job.
 - [ ] Add `cargo audit` job (install `cargo-audit` in CI).
 - [ ] Add benchmark CI job and threshold/regression policy.
 - [ ] Add stress/integration scenario for multi-GB DiskStorage uploads and memory assertions.
@@ -213,7 +213,7 @@ cargo bench --bench upload_bench
 | Task | Category | Status |
 |---|---|---|
 | 01 | Package/Feature/Release Baseline | DONE |
-| 02 | Streaming Parser and Memory-Safety | TODO |
+| 02 | Streaming Parser and Memory-Safety | DONE |
 | 03 | RFC 7578 Edge Cases | TODO |
 | 04 | Builder API and Validation Model | TODO |
 | 05 | Storage Trait and Backend Extensibility | TODO |

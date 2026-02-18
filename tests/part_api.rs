@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::{TryStreamExt, stream};
 use rust_multer::{Multipart, MulterError, ParseError};
 
 #[tokio::test]
@@ -18,7 +18,7 @@ async fn exposes_metadata_accessors() {
     let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
     let part = multipart
-        .next()
+        .next_part()
         .await
         .expect("part expected")
         .expect("part should parse");
@@ -31,8 +31,18 @@ async fn exposes_metadata_accessors() {
 
 #[tokio::test]
 async fn bytes_are_single_pass() {
-    let mut part = parse_single_part_body("hello").await;
-    assert_eq!(part.size_hint(), 5);
+    let input_body =
+        "--BOUND\r\nContent-Disposition: form-data; name=\"field\"\r\n\r\nhello\r\n--BOUND--\r\n";
+    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(
+        input_body.as_bytes(),
+    ))]);
+    let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
+    let mut part = multipart
+        .next_part()
+        .await
+        .expect("part expected")
+        .expect("part should parse");
+    assert_eq!(part.size_hint(), 1);
 
     let payload = part.bytes().await.expect("bytes should be readable");
     assert_eq!(payload, Bytes::from_static(b"hello"));
@@ -44,7 +54,16 @@ async fn bytes_are_single_pass() {
 
 #[tokio::test]
 async fn stream_is_single_pass_and_returns_body() {
-    let mut part = parse_single_part_body("stream-body").await;
+    let input_body = "--BOUND\r\nContent-Disposition: form-data; name=\"field\"\r\n\r\nstream-body\r\n--BOUND--\r\n";
+    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from(
+        input_body.as_bytes().to_vec(),
+    ))]);
+    let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
+    let mut part = multipart
+        .next_part()
+        .await
+        .expect("part expected")
+        .expect("part should parse");
 
     let stream = part.stream().expect("stream should be created");
     let chunks = stream.try_collect::<Vec<_>>().await.expect("stream should read");
@@ -72,7 +91,7 @@ async fn text_rejects_non_utf8_payloads() {
     let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from(bytes))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
     let mut part = multipart
-        .next()
+        .next_part()
         .await
         .expect("part expected")
         .expect("part should parse");
@@ -84,23 +103,10 @@ async fn text_rejects_non_utf8_payloads() {
     ));
 }
 
-async fn parse_single_part_body(body: &str) -> rust_multer::Part {
-    let input_body = format!(
-        "--BOUND\r\nContent-Disposition: form-data; name=\"field\"\r\n\r\n{body}\r\n--BOUND--\r\n"
-    );
-
-    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from(input_body.into_bytes()))]);
-    let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
-    multipart
-        .next()
-        .await
-        .expect("part expected")
-        .expect("part should parse")
-}
-
 fn assert_already_consumed(err: MulterError) {
     assert!(
         err.to_string().contains("already consumed"),
         "unexpected error: {err}"
     );
 }
+

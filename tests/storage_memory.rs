@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
-use futures::{StreamExt, stream};
+use futures::stream;
 use rust_multer::{MemoryStorage, Multer, MulterError, Multipart};
 
 #[tokio::test]
@@ -13,10 +13,7 @@ async fn stores_file_part_and_returns_metadata() {
     let mut multipart =
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
     let part = multipart
-        .next()
-        .await
-        .expect("part expected")
-        .expect("part should parse");
+        .next_part().await.expect("part should parse").expect("part expected");
 
     let stored = multer.store(part).await.expect("store should succeed");
     assert_eq!(stored.field_name, "avatar");
@@ -44,17 +41,10 @@ async fn memory_storage_conformance_unique_keys_and_payload_integrity() {
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
 
     let first = multipart
-        .next()
-        .await
-        .expect("first part expected")
-        .expect("first part should parse");
-    let second = multipart
-        .next()
-        .await
-        .expect("second part expected")
-        .expect("second part should parse");
-
+        .next_part().await.expect("first part should parse").expect("first part expected");
     let first_meta = multer.store(first).await.expect("first store should succeed");
+    let second = multipart
+        .next_part().await.expect("second part should parse").expect("second part expected");
     let second_meta = multer.store(second).await.expect("second store should succeed");
 
     assert_ne!(first_meta.storage_key, second_meta.storage_key);
@@ -88,3 +78,5 @@ fn multipart_body(parts: &[(&str, &str, &str, &str)]) -> Vec<u8> {
 fn bytes_stream(body: Vec<u8>) -> impl futures::Stream<Item = Result<Bytes, MulterError>> {
     stream::iter([Ok(Bytes::from(body))])
 }
+
+

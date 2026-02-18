@@ -68,10 +68,11 @@ async fn multipart_from_content_type_is_framework_agnostic_entry_point() {
         )
         .expect("content type should parse");
 
-    let part = futures::StreamExt::next(&mut multipart)
+    let part = multipart
+        .next_part()
         .await
-        .expect("part expected")
-        .expect("part should parse");
+        .expect("part should parse")
+        .expect("part expected");
     assert_eq!(part.field_name(), "field");
 }
 
@@ -115,3 +116,4 @@ async fn parse_and_store_respects_unknown_field_policy_regression() {
         Err(MulterError::UnexpectedField { field }) if field == "other"
     ));
 }
+

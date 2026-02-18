@@ -8,7 +8,7 @@ use axum::{
     routing::post,
 };
 #[cfg(feature = "axum")]
-use futures::{StreamExt, stream};
+use futures::stream;
 #[cfg(feature = "axum")]
 use rust_multer::{MemoryStorage, Multer, MulterError};
 
@@ -29,8 +29,12 @@ async fn upload(headers: HeaderMap, body: Body) -> Result<String, (StatusCode, S
         .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
 
     let mut count = 0usize;
-    while let Some(item) = multipart.next().await {
-        item.map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?;
+    while multipart
+        .next_part()
+        .await
+        .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?
+        .is_some()
+    {
         count += 1;
     }
 
@@ -46,3 +50,4 @@ fn main() {
 fn main() {
     println!("Enable the `axum` feature to run this example.");
 }
+

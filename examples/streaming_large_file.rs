@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
-use futures::{StreamExt, channel::mpsc};
+use futures::channel::mpsc;
 use rust_multer::{Limits, MemoryStorage, Multer, MulterConfig, Selector};
 
 #[tokio::main(flavor = "current_thread")]
@@ -31,11 +31,15 @@ async fn main() {
         .multipart_from_boundary("BOUND", rx)
         .expect("multipart should initialize");
 
-    while let Some(item) = multipart.next().await {
-        let part = item.expect("part should parse");
+    while let Some(part) = multipart
+        .next_part()
+        .await
+        .expect("part should parse")
+    {
         if part.file_name().is_some() {
             let stored = multer.store(part).await.expect("store should succeed");
             println!("stored {} bytes", stored.size);
         }
     }
 }
+

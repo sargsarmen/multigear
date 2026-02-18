@@ -4,7 +4,7 @@
 //! Core crate surface for `rust-multer`.
 
 use bytes::Bytes;
-use futures::{Stream, StreamExt};
+use futures::Stream;
 
 /// Fluent builder API.
 pub mod builder;
@@ -92,7 +92,7 @@ where
     S: StorageEngine,
 {
     /// Stores a file part through the configured storage backend.
-    pub async fn store(&self, part: Part) -> Result<StoredFile, MulterError> {
+    pub async fn store(&self, part: Part<'_>) -> Result<StoredFile, MulterError> {
         self.storage.store(part).await.map_err(MulterError::from)
     }
 
@@ -133,8 +133,7 @@ where
         let mut multipart = self.multipart_from_boundary(boundary, stream)?;
         let mut out = ProcessedMultipart::default();
 
-        while let Some(item) = multipart.next().await {
-            let mut part = item?;
+        while let Some(mut part) = multipart.next_part().await? {
             if part.file_name().is_some() {
                 let stored = self.store(part).await?;
                 out.stored_files.push(stored);
@@ -155,3 +154,4 @@ impl Multer<NoopStorage> {
         MulterBuilder::default()
     }
 }
+

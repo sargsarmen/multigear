@@ -1,10 +1,7 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::task::{Context, Poll};
 
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Stream, future::poll_fn};
 use http::{
     HeaderMap, HeaderName, HeaderValue,
     header::{self},
@@ -14,15 +11,6 @@ use crate::{
     MulterError, ParseError,
     parser::headers::{ParsedPartHeaders, parse_part_headers},
 };
-
-/// Parsed multipart part produced by the streaming parser.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParsedPart {
-    /// Parsed part headers.
-    pub headers: ParsedPartHeaders,
-    /// Raw part body bytes.
-    pub body: Bytes,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ParseState {
@@ -55,6 +43,7 @@ pub struct MultipartStream<S> {
     state: ParseState,
     current_headers: Option<ParsedPartHeaders>,
     current_part_max_size: Option<u64>,
+    current_part_size: u64,
     current_part_is_file: bool,
     limits: StreamLimits,
     received_body_bytes: u64,
@@ -89,73 +78,40 @@ impl<S> MultipartStream<S> {
             state: ParseState::StartBoundary,
             current_headers: None,
             current_part_max_size: None,
+            current_part_size: 0,
             current_part_is_file: false,
             limits,
             received_body_bytes: 0,
             upstream_done: false,
         })
     }
-}
 
-impl<S> Stream for MultipartStream<S>
-where
-    S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
-{
-    type Item = Result<ParsedPart, MulterError>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        loop {
-            match self.parse_available() {
-                ParseOutcome::Emit(item) => return Poll::Ready(Some(*item)),
-                ParseOutcome::Done => return Poll::Ready(None),
-                ParseOutcome::NeedMore => {}
-            }
-
-            if self.upstream_done {
-                self.state = ParseState::Failed;
-                return Poll::Ready(Some(Err(MulterError::IncompleteStream)));
-            }
-
-            match Pin::new(&mut self.stream).poll_next(cx) {
-                Poll::Ready(Some(Ok(chunk))) => {
-                    if !chunk.is_empty() {
-                        if let Some(max_body_size) = self.limits.max_body_size {
-                            let next = self.received_body_bytes.saturating_add(chunk.len() as u64);
-                            if next > max_body_size {
-                                self.state = ParseState::Failed;
-                                return Poll::Ready(Some(Err(MulterError::BodySizeLimitExceeded {
-                                    max_body_size,
-                                })));
-                            }
-                            self.received_body_bytes = next;
-                        }
-                        self.buffer.extend_from_slice(&chunk);
-                    }
-                }
-                Poll::Ready(Some(Err(err))) => {
-                    self.state = ParseState::Failed;
-                    return Poll::Ready(Some(Err(err)));
-                }
-                Poll::Ready(None) => {
-                    self.upstream_done = true;
-                }
-                Poll::Pending => return Poll::Pending,
-            }
-        }
+    /// Returns `true` when the parser is currently positioned in a part body.
+    pub fn is_reading_part_body(&self) -> bool {
+        self.state == ParseState::Body
     }
-}
 
-impl<S> MultipartStream<S> {
-    fn parse_available(&mut self) -> ParseOutcome {
+    /// Polls until the next part headers are available.
+    pub fn poll_next_part_headers(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<ParsedPartHeaders>, MulterError>>
+    where
+        S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
+    {
         loop {
             match self.state {
                 ParseState::StartBoundary => {
                     let Some(line) = take_line(&mut self.buffer) else {
-                        return if self.upstream_done {
-                            ParseOutcome::emit(Err(ParseError::new("missing opening boundary").into()))
-                        } else {
-                            ParseOutcome::NeedMore
-                        };
+                        if self.upstream_done {
+                            self.state = ParseState::Failed;
+                            return Poll::Ready(Err(ParseError::new("missing opening boundary").into()));
+                        }
+
+                        match self.poll_fill_buffer(cx)? {
+                            Poll::Ready(()) => continue,
+                            Poll::Pending => return Poll::Pending,
+                        }
                     };
 
                     if line == self.boundary_line {
@@ -169,156 +125,230 @@ impl<S> MultipartStream<S> {
                     }
 
                     self.state = ParseState::Failed;
-                    return ParseOutcome::emit(Err(ParseError::new("malformed opening boundary").into()));
+                    return Poll::Ready(Err(ParseError::new("malformed opening boundary").into()));
                 }
                 ParseState::Headers => {
                     let Some(split) = find_subslice(&self.buffer, b"\r\n\r\n") else {
-                        return ParseOutcome::NeedMore;
+                        if self.upstream_done {
+                            self.state = ParseState::Failed;
+                            return Poll::Ready(Err(MulterError::IncompleteStream));
+                        }
+
+                        match self.poll_fill_buffer(cx)? {
+                            Poll::Ready(()) => continue,
+                            Poll::Pending => return Poll::Pending,
+                        }
                     };
 
                     let raw = self.buffer[..split].to_vec();
                     self.buffer.drain(..split + 4);
 
-                    let headers = match parse_header_block(&raw).and_then(|h| parse_part_headers(&h))
-                    {
+                    let headers = match parse_header_block(&raw).and_then(|h| parse_part_headers(&h)) {
                         Ok(headers) => headers,
                         Err(err) => {
                             self.state = ParseState::Failed;
-                            return ParseOutcome::emit(Err(err.into()));
+                            return Poll::Ready(Err(err.into()));
                         }
                     };
 
-                    self.current_headers = Some(headers);
-                    self.current_part_is_file = self
-                        .current_headers
-                        .as_ref()
-                        .is_some_and(|value| value.file_name.is_some());
+                    self.current_part_is_file = headers.file_name.is_some();
                     self.current_part_max_size = if self.current_part_is_file {
                         self.limits.max_file_size
                     } else {
                         self.limits.max_field_size
                     };
+                    self.current_part_size = 0;
+                    self.current_headers = Some(headers.clone());
                     self.state = ParseState::Body;
+                    return Poll::Ready(Ok(Some(headers)));
                 }
                 ParseState::Body => {
-                    let Some(split) = find_subslice(&self.buffer, &self.delimiter) else {
-                        if let Some(limit) = self.current_part_max_size {
-                            let max_tail = self.delimiter.len().saturating_sub(1);
-                            let guaranteed_body_len = self.buffer.len().saturating_sub(max_tail);
-                            if (guaranteed_body_len as u64) > limit {
-                                self.state = ParseState::Failed;
-                                let Some(headers) = self.current_headers.as_ref() else {
-                                    return ParseOutcome::emit(
-                                        Err(ParseError::new("missing part headers").into()),
-                                    );
-                                };
-                                return ParseOutcome::emit(Err(size_limit_error(
-                                    headers.field_name.clone(),
-                                    self.current_part_is_file,
-                                    limit,
-                                )));
-                            }
-                        }
-
-                        if has_malformed_boundary_line(
-                            &self.buffer,
-                            &self.boundary_line,
-                            &self.boundary_end_line,
-                        ) {
-                            self.state = ParseState::Failed;
-                            return ParseOutcome::emit(Err(ParseError::new(
-                                "malformed multipart boundary",
-                            )
-                            .into()));
-                        }
-                        return ParseOutcome::NeedMore;
-                    };
-
-                    let suffix_start = split + self.delimiter.len();
-                    let Some(boundary_suffix) = self.buffer.get(suffix_start..) else {
-                        return ParseOutcome::NeedMore;
-                    };
-
-                    let (consumed, is_terminal) = if boundary_suffix.starts_with(b"--\r\n") {
-                        (suffix_start + 4, true)
-                    } else if boundary_suffix.starts_with(b"\r\n") {
-                        (suffix_start + 2, false)
-                    } else if self.upstream_done && boundary_suffix == b"--" {
-                        (suffix_start + 2, true)
-                    } else {
-                        self.state = ParseState::Failed;
-                        return ParseOutcome::emit(Err(ParseError::new(
-                            "malformed multipart boundary",
-                        )
-                        .into()));
-                    };
-
-                    let body = Bytes::from(self.buffer[..split].to_vec());
-                    self.buffer.drain(..consumed);
-
-                    if let Some(limit) = self.current_part_max_size {
-                        if (body.len() as u64) > limit {
-                            self.state = ParseState::Failed;
-                            let Some(headers) = self.current_headers.as_ref() else {
-                                return ParseOutcome::emit(
-                                    Err(ParseError::new("missing part headers").into()),
-                                );
-                            };
-                            return ParseOutcome::emit(Err(size_limit_error(
-                                headers.field_name.clone(),
-                                self.current_part_is_file,
-                                limit,
-                            )));
-                        }
-                    }
-
-                    let Some(headers) = self.current_headers.take() else {
-                        self.state = ParseState::Failed;
-                        return ParseOutcome::emit(Err(ParseError::new("missing part headers").into()));
-                    };
-
-                    self.current_part_max_size = None;
-                    self.current_part_is_file = false;
-
-                    self.state = if is_terminal {
-                        ParseState::End
-                    } else {
-                        ParseState::Headers
-                    };
-
-                    return ParseOutcome::emit(Ok(ParsedPart { headers, body }));
+                    return Poll::Ready(Err(ParseError::new(
+                        "previous part body must be consumed before requesting next part",
+                    )
+                    .into()));
                 }
-                ParseState::End => return ParseOutcome::Done,
-                ParseState::Failed => return ParseOutcome::Done,
+                ParseState::End => return Poll::Ready(Ok(None)),
+                ParseState::Failed => return Poll::Ready(Ok(None)),
             }
         }
     }
-}
 
-fn size_limit_error(field: String, is_file: bool, limit: u64) -> MulterError {
-    if is_file {
-        MulterError::FileSizeLimitExceeded {
-            field,
-            max_file_size: limit,
-        }
-    } else {
-        MulterError::FieldSizeLimitExceeded {
-            field,
-            max_field_size: limit,
+    /// Polls the next chunk for the currently active part body.
+    pub fn poll_next_part_chunk(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<Bytes>, MulterError>>
+    where
+        S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
+    {
+        loop {
+            if self.state != ParseState::Body {
+                return Poll::Ready(Ok(None));
+            }
+
+            if let Some(split) = find_subslice(&self.buffer, &self.delimiter) {
+                let suffix_start = split + self.delimiter.len();
+                let Some(boundary_suffix) = self.buffer.get(suffix_start..) else {
+                    if self.upstream_done {
+                        self.state = ParseState::Failed;
+                        return Poll::Ready(Err(MulterError::IncompleteStream));
+                    }
+
+                    match self.poll_fill_buffer(cx)? {
+                        Poll::Ready(()) => continue,
+                        Poll::Pending => return Poll::Pending,
+                    }
+                };
+
+                let (consumed, is_terminal) = if boundary_suffix.starts_with(b"--\r\n") {
+                    (suffix_start + 4, true)
+                } else if boundary_suffix.starts_with(b"\r\n") {
+                    (suffix_start + 2, false)
+                } else if self.upstream_done && boundary_suffix == b"--" {
+                    (suffix_start + 2, true)
+                } else {
+                    self.state = ParseState::Failed;
+                    return Poll::Ready(Err(ParseError::new("malformed multipart boundary").into()));
+                };
+
+                if let Err(err) = self.ensure_part_limit(split as u64) {
+                    self.state = ParseState::Failed;
+                    return Poll::Ready(Err(err));
+                }
+
+                let emit_chunk = if split == 0 {
+                    None
+                } else {
+                    let bytes = Bytes::copy_from_slice(&self.buffer[..split]);
+                    self.current_part_size = self.current_part_size.saturating_add(split as u64);
+                    Some(bytes)
+                };
+
+                self.buffer.drain(..consumed);
+                self.current_headers = None;
+                self.current_part_max_size = None;
+                self.current_part_size = 0;
+                self.current_part_is_file = false;
+                self.state = if is_terminal {
+                    ParseState::End
+                } else {
+                    ParseState::Headers
+                };
+
+                return Poll::Ready(Ok(emit_chunk));
+            }
+
+            if has_malformed_boundary_line(
+                &self.buffer,
+                &self.boundary_line,
+                &self.boundary_end_line,
+            ) {
+                self.state = ParseState::Failed;
+                return Poll::Ready(Err(ParseError::new("malformed multipart boundary").into()));
+            }
+
+            let max_tail = self.delimiter.len().saturating_sub(1);
+            let safe_len = self.buffer.len().saturating_sub(max_tail);
+            if safe_len > 0 {
+                if let Err(err) = self.ensure_part_limit(safe_len as u64) {
+                    self.state = ParseState::Failed;
+                    return Poll::Ready(Err(err));
+                }
+
+                let bytes = Bytes::copy_from_slice(&self.buffer[..safe_len]);
+                self.buffer.drain(..safe_len);
+                self.current_part_size = self.current_part_size.saturating_add(safe_len as u64);
+                return Poll::Ready(Ok(Some(bytes)));
+            }
+
+            if self.upstream_done {
+                self.state = ParseState::Failed;
+                return Poll::Ready(Err(MulterError::IncompleteStream));
+            }
+
+            match self.poll_fill_buffer(cx)? {
+                Poll::Ready(()) => continue,
+                Poll::Pending => return Poll::Pending,
+            }
         }
     }
-}
 
-#[derive(Debug)]
-enum ParseOutcome {
-    NeedMore,
-    Emit(Box<Result<ParsedPart, MulterError>>),
-    Done,
-}
+    /// Drains and discards the currently active part body, if any.
+    pub async fn drain_current_part(&mut self) -> Result<(), MulterError>
+    where
+        S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
+    {
+        if !self.is_reading_part_body() {
+            return Ok(());
+        }
 
-impl ParseOutcome {
-    fn emit(item: Result<ParsedPart, MulterError>) -> Self {
-        Self::Emit(Box::new(item))
+        loop {
+            let next = poll_fn(|cx| self.poll_next_part_chunk(cx)).await?;
+            if next.is_none() {
+                return Ok(());
+            }
+        }
+    }
+
+    fn poll_fill_buffer(&mut self, cx: &mut Context<'_>) -> Result<Poll<()>, MulterError>
+    where
+        S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
+    {
+        match std::pin::Pin::new(&mut self.stream).poll_next(cx) {
+            Poll::Pending => Ok(Poll::Pending),
+            Poll::Ready(Some(Ok(chunk))) => {
+                if !chunk.is_empty() {
+                    if let Some(max_body_size) = self.limits.max_body_size {
+                        let next = self.received_body_bytes.saturating_add(chunk.len() as u64);
+                        if next > max_body_size {
+                            self.state = ParseState::Failed;
+                            return Err(MulterError::BodySizeLimitExceeded { max_body_size });
+                        }
+                        self.received_body_bytes = next;
+                    }
+
+                    self.buffer.extend_from_slice(&chunk);
+                }
+                Ok(Poll::Ready(()))
+            }
+            Poll::Ready(Some(Err(err))) => {
+                self.state = ParseState::Failed;
+                Err(err)
+            }
+            Poll::Ready(None) => {
+                self.upstream_done = true;
+                Ok(Poll::Ready(()))
+            }
+        }
+    }
+
+    fn ensure_part_limit(&self, additional: u64) -> Result<(), MulterError> {
+        let Some(limit) = self.current_part_max_size else {
+            return Ok(());
+        };
+
+        if self.current_part_size.saturating_add(additional) <= limit {
+            return Ok(());
+        }
+
+        let field = self
+            .current_headers
+            .as_ref()
+            .map(|headers| headers.field_name.clone())
+            .unwrap_or_else(|| "<unknown>".to_owned());
+
+        if self.current_part_is_file {
+            Err(MulterError::FileSizeLimitExceeded {
+                field,
+                max_file_size: limit,
+            })
+        } else {
+            Err(MulterError::FieldSizeLimitExceeded {
+                field,
+                max_field_size: limit,
+            })
+        }
     }
 }
 
@@ -390,3 +420,4 @@ fn validate_boundary_input(boundary: &str) -> Result<(), ParseError> {
 
     Ok(())
 }
+

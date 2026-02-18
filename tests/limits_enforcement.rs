@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
-use futures::{StreamExt, channel::mpsc, stream};
+use futures::{channel::mpsc, stream};
 use rust_multer::{Limits, MulterConfig, MulterError, Multipart, Selector, UnknownFieldPolicy};
 
 #[tokio::test]
@@ -14,13 +14,18 @@ async fn enforces_max_file_size() {
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
-    let item = multipart.next().await.expect("item expected");
+    let mut part = multipart
+        .next_part()
+        .await
+        .expect("headers should parse")
+        .expect("item expected");
+    let err = part.bytes().await.expect_err("body should fail size limit");
     assert!(matches!(
-        item,
-        Err(MulterError::FileSizeLimitExceeded {
+        err,
+        MulterError::FileSizeLimitExceeded {
             field,
             max_file_size: 3
-        }) if field == "upload"
+        } if field == "upload"
     ));
 }
 
@@ -34,13 +39,18 @@ async fn enforces_max_field_size() {
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
-    let item = multipart.next().await.expect("item expected");
+    let mut part = multipart
+        .next_part()
+        .await
+        .expect("headers should parse")
+        .expect("item expected");
+    let err = part.bytes().await.expect_err("body should fail size limit");
     assert!(matches!(
-        item,
-        Err(MulterError::FieldSizeLimitExceeded {
+        err,
+        MulterError::FieldSizeLimitExceeded {
             field,
             max_field_size: 4
-        }) if field == "note"
+        } if field == "note"
     ));
 }
 
@@ -58,16 +68,16 @@ async fn enforces_max_files() {
         .expect("multipart should initialize");
 
     let first = multipart
-        .next()
+        .next_part()
         .await
         .expect("first item expected")
         .expect("first file should pass");
     assert_eq!(first.field_name(), "a");
 
-    let second = multipart.next().await.expect("second item expected");
+    let second = multipart.next_part().await.expect_err("second item expected");
     assert!(matches!(
         second,
-        Err(MulterError::FilesLimitExceeded { max_files: 1 })
+        MulterError::FilesLimitExceeded { max_files: 1 }
     ));
 }
 
@@ -85,16 +95,16 @@ async fn enforces_max_fields() {
         .expect("multipart should initialize");
 
     let first = multipart
-        .next()
+        .next_part()
         .await
         .expect("first item expected")
         .expect("first field should pass");
     assert_eq!(first.field_name(), "first");
 
-    let second = multipart.next().await.expect("second item expected");
+    let second = multipart.next_part().await.expect_err("second item expected");
     assert!(matches!(
         second,
-        Err(MulterError::FieldsLimitExceeded { max_fields: 1 })
+        MulterError::FieldsLimitExceeded { max_fields: 1 }
     ));
 }
 
@@ -113,10 +123,10 @@ async fn enforces_max_body_size() {
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
-    let item = multipart.next().await.expect("item expected");
+    let item = multipart.next_part().await.expect_err("item expected");
     assert!(matches!(
         item,
-        Err(MulterError::BodySizeLimitExceeded { max_body_size: 32 })
+        MulterError::BodySizeLimitExceeded { max_body_size: 32 }
     ));
 }
 
@@ -134,16 +144,16 @@ async fn enforces_allowed_mime_types_with_wildcard() {
         .expect("multipart should initialize");
 
     let first = multipart
-        .next()
+        .next_part()
         .await
         .expect("first item expected")
         .expect("image file should pass");
     assert_eq!(first.field_name(), "avatar");
 
-    let second = multipart.next().await.expect("second item expected");
+    let second = multipart.next_part().await.expect_err("second item expected");
     assert!(matches!(
         second,
-        Err(MulterError::MimeTypeNotAllowed { field, mime })
+        MulterError::MimeTypeNotAllowed { field, mime }
         if field == "notes" && mime == "text/plain"
     ));
 }
@@ -167,14 +177,20 @@ async fn fails_early_before_terminal_boundary_for_large_file_chunks() {
         .expect("send chunk");
     drop(tx);
 
-    let mut multipart = Multipart::with_config("BOUND", rx, config).expect("multipart should initialize");
-    let item = multipart.next().await.expect("item expected");
+    let mut multipart =
+        Multipart::with_config("BOUND", rx, config).expect("multipart should initialize");
+    let mut part = multipart
+        .next_part()
+        .await
+        .expect("headers should parse")
+        .expect("item expected");
+    let err = part.bytes().await.expect_err("body should fail");
     assert!(matches!(
-        item,
-        Err(MulterError::FileSizeLimitExceeded {
+        err,
+        MulterError::FileSizeLimitExceeded {
             field,
             max_file_size: 4
-        }) if field == "upload"
+        } if field == "upload"
     ));
 }
 
@@ -226,3 +242,4 @@ fn multipart_body(parts: &[(&str, Option<&str>, Option<&str>, &str)]) -> Vec<u8>
 fn bytes_stream(body: Vec<u8>) -> impl futures::Stream<Item = Result<Bytes, MulterError>> {
     stream::iter([Ok(Bytes::from(body))])
 }
+

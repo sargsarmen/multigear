@@ -3,8 +3,6 @@
 #[cfg(feature = "actix")]
 use actix_web::{App, HttpRequest, HttpResponse, Responder, web};
 #[cfg(feature = "actix")]
-use futures::StreamExt;
-#[cfg(feature = "actix")]
 use rust_multer::{MemoryStorage, Multer};
 
 #[cfg(feature = "actix")]
@@ -17,11 +15,12 @@ async fn upload(request: HttpRequest, payload: web::Payload) -> impl Responder {
     };
 
     let mut count = 0usize;
-    while let Some(item) = multipart.next().await {
-        if let Err(err) = item {
-            return HttpResponse::BadRequest().body(err.to_string());
+    loop {
+        match multipart.next_part().await {
+            Ok(Some(_)) => count += 1,
+            Ok(None) => break,
+            Err(err) => return HttpResponse::BadRequest().body(err.to_string()),
         }
-        count += 1;
     }
 
     HttpResponse::Ok().body(format!("parsed {count} multipart parts"))
@@ -36,3 +35,4 @@ fn main() {
 fn main() {
     println!("Enable the `actix` feature to run this example.");
 }
+

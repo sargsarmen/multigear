@@ -1,15 +1,13 @@
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::task::{Context, Poll};
 
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Stream, future::poll_fn};
 
 use crate::{
     Limits, MulterConfig, MulterError, ParseError, Selector, UnknownFieldPolicy,
     Part,
     parser::stream::{MultipartStream, StreamLimits},
+    part::PartBodyReader,
     selector::{SelectorAction, SelectorEngine},
 };
 
@@ -58,86 +56,70 @@ impl<S> Multipart<S> {
     }
 }
 
-impl<S> Stream for Multipart<S>
+impl<S> Multipart<S>
 where
     S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
 {
-    type Item = Result<Part, MulterError>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    /// Returns the next multipart part, if available.
+    pub async fn next_part(&mut self) -> Result<Option<Part<'_>>, MulterError> {
         loop {
-            match Pin::new(&mut self.inner).poll_next(cx) {
-                Poll::Ready(Some(Ok(parsed))) => {
-                    let part = Part::from_parsed(parsed);
-                    if part.file_name().is_none() {
-                        match self.validate_text_part(&part) {
-                            Ok(()) => return Poll::Ready(Some(Ok(part))),
-                            Err(err) => return Poll::Ready(Some(Err(err))),
+            if self.inner.is_reading_part_body() {
+                self.inner.drain_current_part().await?;
+            }
+
+            let headers = poll_fn(|cx| self.inner.poll_next_part_headers(cx)).await?;
+            let Some(headers) = headers else {
+                return Ok(None);
+            };
+
+            if headers.file_name.is_none() {
+                self.field_count += 1;
+                if let Some(max_fields) = self.limits.max_fields {
+                    if self.field_count > max_fields {
+                        return Err(MulterError::FieldsLimitExceeded { max_fields });
+                    }
+                }
+
+                return Ok(Some(Part::new(headers, &mut self.inner)));
+            }
+
+            match self.selector.evaluate_file_field(&headers.field_name) {
+                Ok(SelectorAction::Accept) => {
+                    if !self.limits.is_mime_allowed(&headers.content_type) {
+                        return Err(MulterError::MimeTypeNotAllowed {
+                            field: headers.field_name.clone(),
+                            mime: headers.content_type.essence_str().to_owned(),
+                        });
+                    }
+
+                    self.file_count += 1;
+                    if let Some(max_files) = self.limits.max_files {
+                        if self.file_count > max_files {
+                            return Err(MulterError::FilesLimitExceeded { max_files });
                         }
                     }
 
-                    match self.selector.evaluate_file_field(part.field_name()) {
-                        Ok(SelectorAction::Accept) => match self.validate_file_part(&part) {
-                            Ok(()) => return Poll::Ready(Some(Ok(part))),
-                            Err(err) => return Poll::Ready(Some(Err(err))),
-                        },
-                        Ok(SelectorAction::Ignore) => continue,
-                        Err(err) => return Poll::Ready(Some(Err(err))),
-                    }
+                    return Ok(Some(Part::new(headers, &mut self.inner)));
                 }
-                Poll::Ready(Some(Err(err))) => return Poll::Ready(Some(Err(err))),
-                Poll::Ready(None) => return Poll::Ready(None),
-                Poll::Pending => return Poll::Pending,
+                Ok(SelectorAction::Ignore) => {
+                    self.inner.drain_current_part().await?;
+                    continue;
+                }
+                Err(err) => return Err(err),
             }
         }
     }
 }
 
-impl<S> Multipart<S> {
-    fn validate_text_part(&mut self, part: &Part) -> Result<(), MulterError> {
-        if let Some(max_field_size) = self.limits.max_field_size {
-            if (part.body.len() as u64) > max_field_size {
-                return Err(MulterError::FieldSizeLimitExceeded {
-                    field: part.field_name().to_owned(),
-                    max_field_size,
-                });
-            }
-        }
-
-        self.field_count += 1;
-        if let Some(max_fields) = self.limits.max_fields {
-            if self.field_count > max_fields {
-                return Err(MulterError::FieldsLimitExceeded { max_fields });
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_file_part(&mut self, part: &Part) -> Result<(), MulterError> {
-        if let Some(max_file_size) = self.limits.max_file_size {
-            if (part.body.len() as u64) > max_file_size {
-                return Err(MulterError::FileSizeLimitExceeded {
-                    field: part.field_name().to_owned(),
-                    max_file_size,
-                });
-            }
-        }
-
-        if !self.limits.is_mime_allowed(part.content_type()) {
-            return Err(MulterError::MimeTypeNotAllowed {
-                field: part.field_name().to_owned(),
-                mime: part.content_type().essence_str().to_owned(),
-            });
-        }
-
-        self.file_count += 1;
-        if let Some(max_files) = self.limits.max_files {
-            if self.file_count > max_files {
-                return Err(MulterError::FilesLimitExceeded { max_files });
-            }
-        }
-
-        Ok(())
+impl<S> PartBodyReader for MultipartStream<S>
+where
+    S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
+{
+    fn poll_next_chunk(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<Bytes>, MulterError>> {
+        self.poll_next_part_chunk(cx)
     }
 }
+

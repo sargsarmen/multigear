@@ -1,34 +1,46 @@
 use std::{
+    fmt,
     pin::Pin,
     task::{Context, Poll},
 };
 
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 
-use crate::{
-    MulterError, ParseError,
-    parser::headers::ParsedPartHeaders,
-    parser::stream::ParsedPart,
-};
+use crate::{MulterError, ParseError, parser::headers::ParsedPartHeaders};
 
-/// Parsed multipart part.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Part {
-    /// Parsed part headers.
-    pub headers: ParsedPartHeaders,
-    /// Raw part body bytes.
-    pub body: Bytes,
-    consumed: bool,
+pub(crate) trait PartBodyReader {
+    fn poll_next_chunk(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Option<Bytes>, MulterError>>;
 }
 
-impl Part {
-    /// Creates a high-level part from a low-level parsed part.
-    pub(crate) fn from_parsed(parsed: ParsedPart) -> Self {
+/// Parsed multipart part.
+pub struct Part<'a> {
+    /// Parsed part headers.
+    pub headers: ParsedPartHeaders,
+    body_reader: Option<&'a mut dyn PartBodyReader>,
+}
+
+impl fmt::Debug for Part<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Part")
+            .field("headers", &self.headers)
+            .field("consumed", &self.body_reader.is_none())
+            .finish()
+    }
+}
+
+impl<'a> Part<'a> {
+    /// Creates a high-level part from parsed headers and a body reader.
+    pub(crate) fn new(
+        headers: ParsedPartHeaders,
+        body_reader: &'a mut dyn PartBodyReader,
+    ) -> Self {
         Self {
-            headers: parsed.headers,
-            body: parsed.body,
-            consumed: false,
+            headers,
+            body_reader: Some(body_reader),
         }
     }
 
@@ -54,48 +66,73 @@ impl Part {
 
     /// Returns the remaining body size hint in bytes.
     pub fn size_hint(&self) -> usize {
-        if self.consumed { 0 } else { self.body.len() }
+        if self.body_reader.is_some() { 1 } else { 0 }
     }
 
     /// Reads the full part body as bytes.
     pub async fn bytes(&mut self) -> Result<Bytes, MulterError> {
-        self.take_body()
+        let mut stream = self.stream()?;
+        let mut out = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            out.extend_from_slice(&chunk?);
+        }
+        Ok(Bytes::from(out))
     }
 
     /// Reads the full part body and decodes it as UTF-8 text.
     pub async fn text(&mut self) -> Result<String, MulterError> {
-        let bytes = self.take_body()?;
+        let bytes = self.bytes().await?;
         String::from_utf8(bytes.to_vec())
             .map_err(|_| ParseError::new("part body is not valid UTF-8").into())
     }
 
     /// Returns a one-shot body stream for this part.
-    pub fn stream(&mut self) -> Result<PartBodyStream, MulterError> {
-        Ok(PartBodyStream {
-            body: Some(self.take_body()?),
-        })
-    }
-
-    fn take_body(&mut self) -> Result<Bytes, MulterError> {
-        if self.consumed {
+    pub fn stream(&mut self) -> Result<PartBodyStream<'_>, MulterError> {
+        let Some(body_reader) = self.body_reader.take() else {
             return Err(ParseError::new("part body was already consumed").into());
-        }
+        };
 
-        self.consumed = true;
-        Ok(self.body.clone())
+        Ok(PartBodyStream {
+            body_reader,
+            finished: false,
+        })
     }
 }
 
 /// One-shot stream returned by [`Part::stream`].
-#[derive(Debug)]
-pub struct PartBodyStream {
-    body: Option<Bytes>,
+pub struct PartBodyStream<'a> {
+    body_reader: &'a mut dyn PartBodyReader,
+    finished: bool,
 }
 
-impl Stream for PartBodyStream {
-    type Item = Result<Bytes, MulterError>;
-
-    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Poll::Ready(self.body.take().map(Ok))
+impl fmt::Debug for PartBodyStream<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PartBodyStream")
+            .field("finished", &self.finished)
+            .finish()
     }
 }
+
+impl Stream for PartBodyStream<'_> {
+    type Item = Result<Bytes, MulterError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.finished {
+            return Poll::Ready(None);
+        }
+
+        match self.body_reader.poll_next_chunk(cx) {
+            Poll::Ready(Ok(Some(bytes))) => Poll::Ready(Some(Ok(bytes))),
+            Poll::Ready(Ok(None)) => {
+                self.finished = true;
+                Poll::Ready(None)
+            }
+            Poll::Ready(Err(err)) => {
+                self.finished = true;
+                Poll::Ready(Some(Err(err)))
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+

@@ -35,9 +35,9 @@ impl MemoryStorage {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl StorageEngine for MemoryStorage {
-    async fn store(&self, mut part: Part) -> Result<StoredFile, StorageError> {
+    async fn store(&self, mut part: Part<'_>) -> Result<StoredFile, StorageError> {
         let field_name = part.field_name().to_owned();
         let file_name = part.file_name().map(ToOwned::to_owned);
         let content_type = part.content_type().clone();
@@ -61,3 +61,5 @@ impl StorageEngine for MemoryStorage {
         })
     }
 }
+
+

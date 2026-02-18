@@ -98,7 +98,7 @@ impl DiskStorage {
         DiskStorageBuilder::default()
     }
 
-    fn choose_output_name(&self, part: &Part) -> String {
+    fn choose_output_name(&self, part: &Part<'_>) -> String {
         let input_name = part
             .file_name()
             .map(ToOwned::to_owned)
@@ -114,9 +114,9 @@ impl DiskStorage {
     }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl StorageEngine for DiskStorage {
-    async fn store(&self, mut part: Part) -> Result<StoredFile, StorageError> {
+    async fn store(&self, mut part: Part<'_>) -> Result<StoredFile, StorageError> {
         tokio::fs::create_dir_all(&self.root)
             .await
             .map_err(|err| StorageError::new(format!("failed to create storage directory: {err}")))?;
@@ -210,3 +210,6 @@ pub fn sanitize_filename(input: &str) -> String {
 
     sanitized
 }
+
+
+

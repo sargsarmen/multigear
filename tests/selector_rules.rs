@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
-use futures::{StreamExt, stream};
+use futures::stream;
 use rust_multer::{
     MulterConfig, MulterError, Multipart, SelectedField, Selector, UnknownFieldPolicy,
 };
@@ -22,19 +22,19 @@ async fn single_selector_rejects_second_file_for_same_field() {
         .expect("multipart should initialize");
 
     let first = multipart
-        .next()
+        .next_part()
         .await
         .expect("first item expected")
         .expect("first item should pass selector");
     assert_eq!(first.field_name(), "avatar");
 
-    let second = multipart.next().await.expect("second item expected");
+    let second = multipart.next_part().await.expect_err("second item expected");
     assert!(matches!(
         second,
-        Err(MulterError::FieldCountLimitExceeded {
+        MulterError::FieldCountLimitExceeded {
             field,
             max_count: 1
-        }) if field == "avatar"
+        } if field == "avatar"
     ));
 }
 
@@ -49,10 +49,10 @@ async fn array_selector_rejects_unknown_file_field() {
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
-    let item = multipart.next().await.expect("item expected");
+    let item = multipart.next_part().await.expect_err("item expected");
     assert!(matches!(
         item,
-        Err(MulterError::UnexpectedField { field }) if field == "avatar"
+        MulterError::UnexpectedField { field } if field == "avatar"
     ));
 }
 
@@ -77,7 +77,7 @@ async fn fields_selector_enforces_per_field_max_counts() {
 
     assert_eq!(
         multipart
-            .next()
+            .next_part()
             .await
             .expect("item expected")
             .expect("item should pass selector")
@@ -86,7 +86,7 @@ async fn fields_selector_enforces_per_field_max_counts() {
     );
     assert_eq!(
         multipart
-            .next()
+            .next_part()
             .await
             .expect("item expected")
             .expect("item should pass selector")
@@ -95,7 +95,7 @@ async fn fields_selector_enforces_per_field_max_counts() {
     );
     assert_eq!(
         multipart
-            .next()
+            .next_part()
             .await
             .expect("item expected")
             .expect("item should pass selector")
@@ -103,13 +103,13 @@ async fn fields_selector_enforces_per_field_max_counts() {
         "images"
     );
 
-    let item = multipart.next().await.expect("item expected");
+    let item = multipart.next_part().await.expect_err("item expected");
     assert!(matches!(
         item,
-        Err(MulterError::FieldCountLimitExceeded {
+        MulterError::FieldCountLimitExceeded {
             field,
             max_count: 2
-        }) if field == "images"
+        } if field == "images"
     ));
 }
 
@@ -129,8 +129,11 @@ async fn none_selector_with_ignore_policy_skips_files_but_keeps_text_fields() {
         .expect("multipart should initialize");
 
     let mut names = Vec::new();
-    while let Some(item) = multipart.next().await {
-        let part = item.expect("remaining part should parse");
+    loop {
+        let next = multipart.next_part().await.expect("next part should parse");
+        let Some(part) = next else {
+            break;
+        };
         names.push(part.field_name().to_owned());
     }
 
@@ -152,12 +155,12 @@ async fn any_selector_accepts_all_file_fields() {
         .expect("multipart should initialize");
 
     let mut names = Vec::new();
-    while let Some(item) = multipart.next().await {
-        names.push(
-            item.expect("all parts should be accepted")
-                .field_name()
-                .to_owned(),
-        );
+    loop {
+        let next = multipart.next_part().await.expect("all parts should be accepted");
+        let Some(part) = next else {
+            break;
+        };
+        names.push(part.field_name().to_owned());
     }
 
     assert_eq!(names, vec!["a", "b"]);
@@ -190,3 +193,4 @@ fn multipart_body(parts: &[(&str, Option<&str>, &str)]) -> Vec<u8> {
 fn bytes_stream(body: Vec<u8>) -> impl futures::Stream<Item = Result<Bytes, MulterError>> {
     stream::iter([Ok(Bytes::from(body))])
 }
+

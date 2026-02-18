@@ -12,9 +12,9 @@ struct HashMapStorage {
     files: Arc<RwLock<HashMap<String, Bytes>>>,
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl StorageEngine for HashMapStorage {
-    async fn store(&self, mut part: Part) -> Result<StoredFile, StorageError> {
+    async fn store(&self, mut part: Part<'_>) -> Result<StoredFile, StorageError> {
         let key = format!("{}-{}", part.field_name(), self.files.read().await.len());
         let content = part
             .bytes()
@@ -60,3 +60,5 @@ async fn main() {
 
     println!("stored files: {}", output.stored_files.len());
 }
+
+

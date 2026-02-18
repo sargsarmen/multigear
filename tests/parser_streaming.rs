@@ -23,25 +23,29 @@ async fn parses_chunked_stream_and_yields_parts() {
     let stream = stream::iter(chunks.into_iter().map(Ok::<Bytes, MulterError>));
     let mut multipart = Multipart::new("XBOUND", stream).expect("boundary should be valid");
 
-    let first = multipart
-        .next()
+    let mut first = multipart
+        .next_part()
         .await
-        .expect("first item should exist")
-        .expect("first part should parse");
+        .expect("first part should parse")
+        .expect("first item should exist");
     assert_eq!(first.headers.field_name, "alpha");
     assert!(first.headers.file_name.is_none());
-    assert_eq!(first.body, Bytes::from_static(b"one"));
+    assert_eq!(first.bytes().await.expect("body bytes"), Bytes::from_static(b"one"));
 
-    let second = multipart
-        .next()
+    let mut second = multipart
+        .next_part()
         .await
-        .expect("second item should exist")
-        .expect("second part should parse");
+        .expect("second part should parse")
+        .expect("second item should exist");
     assert_eq!(second.headers.field_name, "beta");
     assert_eq!(second.headers.file_name.as_deref(), Some("b.txt"));
-    assert_eq!(second.body, Bytes::from_static(b"two"));
+    assert_eq!(second.bytes().await.expect("body bytes"), Bytes::from_static(b"two"));
 
-    assert!(multipart.next().await.is_none());
+    assert!(multipart
+        .next_part()
+        .await
+        .expect("stream should finish")
+        .is_none());
 }
 
 #[tokio::test]
@@ -63,26 +67,30 @@ async fn yields_first_part_before_input_completes() {
     tx.unbounded_send(Ok(Bytes::from_static(first_chunk.as_bytes())))
         .expect("send first chunk");
 
-    let first = multipart
-        .next()
+    let mut first = multipart
+        .next_part()
         .await
-        .expect("first item should exist")
-        .expect("first part should parse");
+        .expect("first part should parse")
+        .expect("first item should exist");
     assert_eq!(first.headers.field_name, "first");
-    assert_eq!(first.body, Bytes::from_static(b"one"));
+    assert_eq!(first.bytes().await.expect("body bytes"), Bytes::from_static(b"one"));
 
     tx.unbounded_send(Ok(Bytes::from_static(second_chunk.as_bytes())))
         .expect("send second chunk");
     drop(tx);
 
-    let second = multipart
-        .next()
+    let mut second = multipart
+        .next_part()
         .await
-        .expect("second item should exist")
-        .expect("second part should parse");
+        .expect("second part should parse")
+        .expect("second item should exist");
     assert_eq!(second.headers.field_name, "second");
-    assert_eq!(second.body, Bytes::from_static(b"two"));
-    assert!(multipart.next().await.is_none());
+    assert_eq!(second.bytes().await.expect("body bytes"), Bytes::from_static(b"two"));
+    assert!(multipart
+        .next_part()
+        .await
+        .expect("stream should finish")
+        .is_none());
 }
 
 #[tokio::test]
@@ -97,10 +105,15 @@ async fn reports_malformed_boundary_as_parse_error() {
     let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
 
-    let item = multipart.next().await.expect("item expected");
+    let mut item = multipart
+        .next_part()
+        .await
+        .expect("headers should parse")
+        .expect("item expected");
+    let item = item.bytes().await.expect_err("body should fail");
     assert!(matches!(
         item,
-        Err(MulterError::Parse(ParseError::Message { .. }))
+        MulterError::Parse(ParseError::Message { .. })
     ));
 }
 
@@ -115,8 +128,13 @@ async fn reports_incomplete_terminal_boundary() {
     let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
 
-    let item = multipart.next().await.expect("item expected");
-    assert!(matches!(item, Err(MulterError::IncompleteStream)));
+    let mut item = multipart
+        .next_part()
+        .await
+        .expect("headers should parse")
+        .expect("item expected");
+    let item = item.bytes().await.expect_err("body should fail");
+    assert!(matches!(item, MulterError::IncompleteStream));
 }
 
 #[tokio::test]
@@ -131,10 +149,10 @@ async fn reports_invalid_headers_as_parse_error() {
     let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
 
-    let item = multipart.next().await.expect("item expected");
+    let item = multipart.next_part().await.expect_err("item expected");
     assert!(matches!(
         item,
-        Err(MulterError::Parse(ParseError::Message { .. }))
+        MulterError::Parse(ParseError::Message { .. })
     ));
 }
 
@@ -157,3 +175,44 @@ fn split_bytes(input: &[u8], chunk_sizes: &[usize]) -> Vec<Bytes> {
 
     chunks
 }
+
+#[tokio::test]
+async fn streams_large_body_before_terminal_boundary_arrives() {
+    let (tx, rx) = mpsc::unbounded::<Result<Bytes, MulterError>>();
+    let mut multipart = Multipart::new("BOUND", rx).expect("boundary should be valid");
+
+    tx.unbounded_send(Ok(Bytes::from_static(
+        b"--BOUND\r\nContent-Disposition: form-data; name=\"upload\"; filename=\"big.bin\"\r\n\r\n",
+    )))
+    .expect("send prelude");
+    tx.unbounded_send(Ok(Bytes::from(vec![b'x'; 128 * 1024])))
+        .expect("send first payload chunk");
+
+    let mut part = multipart
+        .next_part()
+        .await
+        .expect("headers should parse")
+        .expect("part should exist");
+
+    let mut stream = part.stream().expect("stream should be available");
+    let first = stream
+        .next()
+        .await
+        .expect("chunk should exist")
+        .expect("chunk should parse");
+    assert!(first.len() >= 64 * 1024);
+
+    tx.unbounded_send(Ok(Bytes::from(vec![b'y'; 128 * 1024])))
+        .expect("send second payload chunk");
+    tx.unbounded_send(Ok(Bytes::from_static(b"\r\n--BOUND--\r\n")))
+        .expect("send trailer");
+    drop(tx);
+
+    let mut total = first.len();
+    while let Some(chunk) = stream.next().await {
+        total += chunk.expect("chunk should parse").len();
+    }
+
+    assert_eq!(total, 256 * 1024);
+}
+

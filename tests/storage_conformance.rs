@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
-use futures::{StreamExt, stream};
+use futures::stream;
 use rust_multer::{Multer, MulterError, Multipart, StorageEngine, StorageError, StoredFile};
 use tokio::sync::RwLock;
 
@@ -12,9 +12,9 @@ struct MapStorage {
     items: Arc<RwLock<HashMap<String, Bytes>>>,
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl StorageEngine for MapStorage {
-    async fn store(&self, mut part: rust_multer::Part) -> Result<StoredFile, StorageError> {
+    async fn store(&self, mut part: rust_multer::Part<'_>) -> Result<StoredFile, StorageError> {
         let key = format!("{}-{}", part.field_name(), self.items.read().await.len());
         let bytes = part
             .bytes()
@@ -57,10 +57,7 @@ async fn custom_storage_backend_conforms_to_store_contract() {
     .expect("multipart should initialize");
 
     let part = multipart
-        .next()
-        .await
-        .expect("part expected")
-        .expect("part should parse");
+        .next_part().await.expect("part should parse").expect("part expected");
     let stored = multer.store(part).await.expect("store should succeed");
 
     assert_eq!(stored.field_name, "doc");
@@ -98,3 +95,6 @@ async fn custom_storage_works_with_parse_and_store_pipeline() {
     assert_eq!(output.stored_files.len(), 1);
     assert_eq!(output.text_fields, vec![("note".to_owned(), "two".to_owned())]);
 }
+
+
+

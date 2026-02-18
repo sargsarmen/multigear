@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use bytes::Bytes;
-use futures::{StreamExt, stream};
+use futures::{channel::mpsc, stream};
 use rust_multer::{DiskStorage, FilenameStrategy, Multer, MulterError, Multipart};
 use uuid::Uuid;
 
@@ -21,10 +21,7 @@ async fn keep_strategy_sanitizes_filename_and_writes_to_disk() {
     let mut multipart =
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
     let part = multipart
-        .next()
-        .await
-        .expect("part expected")
-        .expect("part should parse");
+        .next_part().await.expect("part should parse").expect("part expected");
 
     let stored = multer.store(part).await.expect("store should succeed");
     let path = stored.path.clone().expect("disk storage should return a path");
@@ -60,17 +57,10 @@ async fn random_strategy_generates_distinct_paths() {
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
 
     let first = multipart
-        .next()
-        .await
-        .expect("first expected")
-        .expect("first should parse");
-    let second = multipart
-        .next()
-        .await
-        .expect("second expected")
-        .expect("second should parse");
-
+        .next_part().await.expect("first should parse").expect("first expected");
     let first_stored = multer.store(first).await.expect("first store");
+    let second = multipart
+        .next_part().await.expect("second should parse").expect("second expected");
     let second_stored = multer.store(second).await.expect("second store");
     assert_ne!(first_stored.path, second_stored.path);
 
@@ -91,10 +81,7 @@ async fn custom_strategy_applies_transform() {
     let mut multipart =
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
     let part = multipart
-        .next()
-        .await
-        .expect("part expected")
-        .expect("part should parse");
+        .next_part().await.expect("part should parse").expect("part expected");
 
     let stored = multer.store(part).await.expect("store should succeed");
     let file_name = stored
@@ -135,3 +122,45 @@ fn multipart_body(parts: &[(&str, &str, &str, &str)]) -> Vec<u8> {
 fn bytes_stream(body: Vec<u8>) -> impl futures::Stream<Item = Result<Bytes, MulterError>> {
     stream::iter([Ok(Bytes::from(body))])
 }
+
+#[tokio::test]
+async fn streams_large_file_to_disk_from_chunked_input() {
+    let root = temp_root();
+    let storage = DiskStorage::builder()
+        .path(&root)
+        .filename_strategy(FilenameStrategy::Random)
+        .build()
+        .expect("builder should succeed");
+    let multer = Multer::new(storage);
+
+    let (tx, rx) = mpsc::unbounded::<Result<Bytes, MulterError>>();
+    tx.unbounded_send(Ok(Bytes::from_static(
+        b"--BOUND\r\nContent-Disposition: form-data; name=\"upload\"; filename=\"big.bin\"\r\n\r\n",
+    )))
+    .expect("send prelude");
+    for _ in 0..128 {
+        tx.unbounded_send(Ok(Bytes::from(vec![b'z'; 64 * 1024])))
+            .expect("send payload chunk");
+    }
+    tx.unbounded_send(Ok(Bytes::from_static(b"\r\n--BOUND--\r\n")))
+        .expect("send trailer");
+    drop(tx);
+
+    let mut multipart = Multipart::new("BOUND", rx).expect("multipart should initialize");
+    let part = multipart
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
+
+    let stored = multer.store(part).await.expect("store should succeed");
+    assert_eq!(stored.size, 128 * 64 * 1024);
+
+    let path = stored.path.expect("disk path should be present");
+    let metadata = tokio::fs::metadata(path).await.expect("metadata should exist");
+    assert_eq!(metadata.len(), 128 * 64 * 1024);
+
+    cleanup(root).await;
+}
+
+

@@ -27,21 +27,22 @@ pub struct StoredFile {
 }
 
 /// Async trait abstraction for file storage backends.
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 pub trait StorageEngine: Send + Sync + std::fmt::Debug {
     /// Stores a file part and returns output metadata.
-    async fn store(&self, part: Part) -> Result<StoredFile, StorageError>;
+    async fn store(&self, part: Part<'_>) -> Result<StoredFile, StorageError>;
 }
 
 /// Placeholder storage implementation used as the default backend.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoopStorage;
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl StorageEngine for NoopStorage {
-    async fn store(&self, _part: Part) -> Result<StoredFile, StorageError> {
+    async fn store(&self, _part: Part<'_>) -> Result<StoredFile, StorageError> {
         Err(StorageError::new(
             "no storage backend configured; choose a concrete storage engine",
         ))
     }
 }
+
