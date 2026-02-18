@@ -16,8 +16,10 @@ pub struct ContentDisposition {
 }
 
 /// Parsed header model for a multipart part.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParsedPartHeaders {
+    /// Raw part headers for advanced access.
+    pub headers: HeaderMap,
     /// Parsed content disposition metadata.
     pub content_disposition: ContentDisposition,
     /// Logical field name for this part.
@@ -112,6 +114,7 @@ pub fn parse_part_headers(headers: &HeaderMap) -> Result<ParsedPartHeaders, Pars
     let content_type = parse_part_content_type(content_type_raw)?;
 
     Ok(ParsedPartHeaders {
+        headers: headers.clone(),
         file_name: content_disposition.filename.clone(),
         content_disposition,
         field_name,

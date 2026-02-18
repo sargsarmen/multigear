@@ -4,7 +4,9 @@
 //! Core crate surface for `rust-multer`.
 
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Stream, StreamExt};
+use tokio::io::AsyncRead;
+use tokio_util::io::ReaderStream;
 
 /// Fluent builder API.
 pub mod builder;
@@ -44,6 +46,10 @@ pub use storage::{
     BoxStream, DiskStorage, DiskStorageBuilder, FileMeta, FilenameStrategy, MemoryStorage,
     NoopStorage, StorageEngine, StoredFile,
 };
+
+/// `AsyncRead` adapter stream used by [`Multer::parse_stream`].
+pub type AsyncReadStream<R> =
+    futures::stream::Map<ReaderStream<R>, fn(Result<Bytes, std::io::Error>) -> Result<Bytes, MulterError>>;
 
 /// Processed multipart output returned by [`Multer::parse_and_store`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +111,7 @@ where
         let field_name = part.field_name().to_owned();
         let file_name = part.file_name().map(ToOwned::to_owned);
         let content_type = part.content_type().to_string();
-        let stream = Box::pin(part.stream()?);
+        let stream = part.stream()?;
 
         self.storage
             .store(&field_name, file_name.as_deref(), &content_type, stream)
@@ -138,6 +144,18 @@ where
         self.multipart_from_boundary(boundary, stream)
     }
 
+    /// Creates a configured multipart parser from any `AsyncRead` body stream.
+    pub async fn parse_stream<R>(
+        &self,
+        stream: R,
+        boundary: impl Into<String>,
+    ) -> Result<Multipart<AsyncReadStream<R>>, MulterError>
+    where
+        R: AsyncRead + Unpin + Send + 'static,
+    {
+        self.multipart_from_boundary(boundary, map_async_read_stream(stream))
+    }
+
     /// Parses multipart input and stores all file parts using the active storage backend.
     pub async fn parse_and_store<T>(
         &self,
@@ -163,6 +181,17 @@ where
 
         Ok(out)
     }
+}
+
+fn map_async_read_stream<R>(stream: R) -> AsyncReadStream<R>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    ReaderStream::new(stream).map(async_read_item_to_multer)
+}
+
+fn async_read_item_to_multer(item: Result<Bytes, std::io::Error>) -> Result<Bytes, MulterError> {
+    item.map_err(|err| ParseError::new(format!("async read stream error: {err}")).into())
 }
 
 impl Multer<NoopStorage> {

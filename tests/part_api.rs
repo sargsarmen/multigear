@@ -10,6 +10,7 @@ async fn exposes_metadata_accessors() {
         "--BOUND\r\n",
         "Content-Disposition: form-data; name=\"avatar\"; filename=\"face.png\"\r\n",
         "Content-Type: image/png\r\n",
+        "Content-Length: 3\r\n",
         "\r\n",
         "abc\r\n",
         "--BOUND--\r\n"
@@ -26,7 +27,14 @@ async fn exposes_metadata_accessors() {
     assert_eq!(part.field_name(), "avatar");
     assert_eq!(part.file_name(), Some("face.png"));
     assert_eq!(part.content_type().essence_str(), "image/png");
-    assert_eq!(part.headers().field_name, "avatar");
+    assert_eq!(
+        part.headers()
+            .get("content-disposition")
+            .and_then(|value| value.to_str().ok()),
+        Some("form-data; name=\"avatar\"; filename=\"face.png\"")
+    );
+    assert_eq!(part.parsed_headers().field_name, "avatar");
+    assert_eq!(part.size_hint(), Some(3));
 }
 
 #[tokio::test]
@@ -42,11 +50,11 @@ async fn bytes_are_single_pass() {
         .await
         .expect("part expected")
         .expect("part should parse");
-    assert_eq!(part.size_hint(), 1);
+    assert_eq!(part.size_hint(), None);
 
     let payload = part.bytes().await.expect("bytes should be readable");
     assert_eq!(payload, Bytes::from_static(b"hello"));
-    assert_eq!(part.size_hint(), 0);
+    assert_eq!(part.size_hint(), None);
 
     let err = part.bytes().await.expect_err("second read must fail");
     assert_already_consumed(err);

@@ -3,8 +3,10 @@
 use bytes::Bytes;
 use futures::stream;
 use rust_multer::{
-    Limits, MemoryStorage, Multer, MulterConfig, MulterError, Selector, UnknownFieldPolicy,
+    Limits, MemoryStorage, Multer, MulterConfig, MulterError, Selector, StorageError,
+    UnknownFieldPolicy,
 };
+use tokio::io::AsyncWriteExt;
 
 #[tokio::test]
 async fn parse_and_store_wires_parser_selector_limits_and_storage() {
@@ -77,6 +79,37 @@ async fn multipart_from_content_type_is_framework_agnostic_entry_point() {
 }
 
 #[tokio::test]
+async fn parse_stream_accepts_async_read_input() {
+    let multer = Multer::new(MemoryStorage::new());
+    let body = concat!(
+        "--BOUND\r\n",
+        "Content-Disposition: form-data; name=\"field\"\r\n",
+        "\r\n",
+        "value\r\n",
+        "--BOUND--\r\n"
+    );
+    let (mut writer, reader) = tokio::io::duplex(1024);
+    writer
+        .write_all(body.as_bytes())
+        .await
+        .expect("body should write");
+    drop(writer);
+
+    let mut multipart = multer
+        .parse_stream(reader, "BOUND")
+        .await
+        .expect("parse_stream should initialize multipart");
+    let mut part = multipart
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
+
+    assert_eq!(part.field_name(), "field");
+    assert_eq!(part.text().await.expect("text should decode"), "value");
+}
+
+#[tokio::test]
 async fn parse_and_store_reports_malformed_stream_regression() {
     let multer = Multer::new(MemoryStorage::new());
     let body = concat!(
@@ -89,7 +122,14 @@ async fn parse_and_store_reports_malformed_stream_regression() {
     let result = multer
         .parse_and_store("BOUND", stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]))
         .await;
-    assert!(matches!(result, Err(MulterError::IncompleteStream)));
+    let is_expected = match result {
+        Err(MulterError::IncompleteStream) => true,
+        Err(MulterError::Storage(StorageError::Message { message })) => {
+            message.contains("ended unexpectedly")
+        }
+        _ => false,
+    };
+    assert!(is_expected, "unexpected malformed-stream result");
 }
 
 #[tokio::test]

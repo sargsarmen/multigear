@@ -6,8 +6,9 @@ use std::{
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
+use http::{HeaderMap, header};
 
-use crate::{MulterError, ParseError, parser::headers::ParsedPartHeaders};
+use crate::{BoxStream, MulterError, ParseError, parser::headers::ParsedPartHeaders};
 
 pub(crate) trait PartBodyReader {
     fn poll_next_chunk(
@@ -59,14 +60,23 @@ impl<'a> Part<'a> {
         &self.headers.content_type
     }
 
+    /// Returns raw part headers.
+    pub fn headers(&self) -> &HeaderMap {
+        &self.headers.headers
+    }
+
     /// Returns parsed part headers.
-    pub fn headers(&self) -> &ParsedPartHeaders {
+    pub fn parsed_headers(&self) -> &ParsedPartHeaders {
         &self.headers
     }
 
-    /// Returns the remaining body size hint in bytes.
-    pub fn size_hint(&self) -> usize {
-        if self.body_reader.is_some() { 1 } else { 0 }
+    /// Returns the approximate body size hint in bytes from `Content-Length`, when present.
+    pub fn size_hint(&self) -> Option<u64> {
+        self.headers
+            .headers
+            .get(header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
     }
 
     /// Reads the full part body as bytes.
@@ -87,15 +97,15 @@ impl<'a> Part<'a> {
     }
 
     /// Returns a one-shot body stream for this part.
-    pub fn stream(&mut self) -> Result<PartBodyStream<'_>, MulterError> {
+    pub fn stream(&mut self) -> Result<BoxStream<'_, Result<Bytes, MulterError>>, MulterError> {
         let Some(body_reader) = self.body_reader.take() else {
             return Err(ParseError::new("part body was already consumed").into());
         };
 
-        Ok(PartBodyStream {
+        Ok(Box::pin(PartBodyStream {
             body_reader,
             finished: false,
-        })
+        }))
     }
 }
 

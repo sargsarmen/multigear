@@ -125,10 +125,10 @@ cargo run --example custom_storage
 
 ### Required Changes
 
-- [ ] Add `Multipart::next_part()` ergonomic API (retain Stream impl compatibility).
-- [ ] Add/align `Multer::parse_stream(...)` for framework-agnostic ingestion.
-- [ ] Align `Part::headers()`, `Part::stream()`, and `Part::size_hint()` with PRD contract.
-- [ ] Add focused API tests for single-pass semantics and metadata fidelity.
+- [x] Add `Multipart::next_part()` ergonomic API (retain Stream impl compatibility).
+- [x] Add/align `Multer::parse_stream(...)` for framework-agnostic ingestion.
+- [x] Align `Part::headers()`, `Part::stream()`, and `Part::size_hint()` with PRD contract.
+- [x] Add focused API tests for single-pass semantics and metadata fidelity.
 
 ### Exit Gate
 
@@ -217,7 +217,7 @@ cargo bench --bench upload_bench
 | 03 | RFC 7578 Edge Cases | DONE |
 | 04 | Builder API and Validation Model | DONE |
 | 05 | Storage Trait and Backend Extensibility | DONE |
-| 06 | Part/Multipart Public API Parity | TODO |
+| 06 | Part/Multipart Public API Parity | DONE |
 | 07 | Framework Integrations | TODO |
 | 08 | Tracing/Serde/DX Docs | TODO |
 | 09 | CI/Security/Performance Acceptance | TODO |
