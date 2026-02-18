@@ -28,6 +28,11 @@ impl MemoryStorage {
     pub async fn len(&self) -> usize {
         self.files.read().await.len()
     }
+
+    /// Returns `true` when no payloads are currently stored.
+    pub async fn is_empty(&self) -> bool {
+        self.files.read().await.is_empty()
+    }
 }
 
 #[async_trait::async_trait]

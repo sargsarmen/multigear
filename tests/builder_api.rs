@@ -22,10 +22,12 @@ fn builder_default_is_permissive() {
 
 #[test]
 fn fluent_chaining_sets_expected_configuration() {
-    let mut limits = Limits::default();
-    limits.max_file_size = Some(1024);
-    limits.max_files = Some(4);
-    limits.allowed_mime_types = vec!["image/*".to_owned()];
+    let limits = Limits {
+        max_file_size: Some(1024),
+        max_files: Some(4),
+        allowed_mime_types: vec!["image/*".to_owned()],
+        ..Limits::default()
+    };
 
     let multer = Multer::builder()
         .single("avatar")

@@ -1,5 +1,5 @@
 /// Request and field limits enforced during multipart parsing.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Limits {
     /// Maximum accepted file size in bytes for a single file part.
     pub max_file_size: Option<u64>,
@@ -32,19 +32,6 @@ impl Limits {
         self.allowed_mime_types
             .iter()
             .any(|pattern| mime_matches_pattern(mime, pattern))
-    }
-}
-
-impl Default for Limits {
-    fn default() -> Self {
-        Self {
-            max_file_size: None,
-            max_files: None,
-            max_field_size: None,
-            max_fields: None,
-            max_body_size: None,
-            allowed_mime_types: Vec::new(),
-        }
     }
 }
 

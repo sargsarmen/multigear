@@ -106,7 +106,7 @@ where
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
             match self.parse_available() {
-                ParseOutcome::Emit(item) => return Poll::Ready(Some(item)),
+                ParseOutcome::Emit(item) => return Poll::Ready(Some(*item)),
                 ParseOutcome::Done => return Poll::Ready(None),
                 ParseOutcome::NeedMore => {}
             }
@@ -152,7 +152,7 @@ impl<S> MultipartStream<S> {
                 ParseState::StartBoundary => {
                     let Some(line) = take_line(&mut self.buffer) else {
                         return if self.upstream_done {
-                            ParseOutcome::Emit(Err(ParseError::new("missing opening boundary").into()))
+                            ParseOutcome::emit(Err(ParseError::new("missing opening boundary").into()))
                         } else {
                             ParseOutcome::NeedMore
                         };
@@ -169,7 +169,7 @@ impl<S> MultipartStream<S> {
                     }
 
                     self.state = ParseState::Failed;
-                    return ParseOutcome::Emit(Err(ParseError::new("malformed opening boundary").into()));
+                    return ParseOutcome::emit(Err(ParseError::new("malformed opening boundary").into()));
                 }
                 ParseState::Headers => {
                     let Some(split) = find_subslice(&self.buffer, b"\r\n\r\n") else {
@@ -184,7 +184,7 @@ impl<S> MultipartStream<S> {
                         Ok(headers) => headers,
                         Err(err) => {
                             self.state = ParseState::Failed;
-                            return ParseOutcome::Emit(Err(err.into()));
+                            return ParseOutcome::emit(Err(err.into()));
                         }
                     };
 
@@ -208,11 +208,11 @@ impl<S> MultipartStream<S> {
                             if (guaranteed_body_len as u64) > limit {
                                 self.state = ParseState::Failed;
                                 let Some(headers) = self.current_headers.as_ref() else {
-                                    return ParseOutcome::Emit(
+                                    return ParseOutcome::emit(
                                         Err(ParseError::new("missing part headers").into()),
                                     );
                                 };
-                                return ParseOutcome::Emit(Err(size_limit_error(
+                                return ParseOutcome::emit(Err(size_limit_error(
                                     headers.field_name.clone(),
                                     self.current_part_is_file,
                                     limit,
@@ -226,7 +226,7 @@ impl<S> MultipartStream<S> {
                             &self.boundary_end_line,
                         ) {
                             self.state = ParseState::Failed;
-                            return ParseOutcome::Emit(Err(ParseError::new(
+                            return ParseOutcome::emit(Err(ParseError::new(
                                 "malformed multipart boundary",
                             )
                             .into()));
@@ -247,7 +247,7 @@ impl<S> MultipartStream<S> {
                         (suffix_start + 2, true)
                     } else {
                         self.state = ParseState::Failed;
-                        return ParseOutcome::Emit(Err(ParseError::new(
+                        return ParseOutcome::emit(Err(ParseError::new(
                             "malformed multipart boundary",
                         )
                         .into()));
@@ -260,11 +260,11 @@ impl<S> MultipartStream<S> {
                         if (body.len() as u64) > limit {
                             self.state = ParseState::Failed;
                             let Some(headers) = self.current_headers.as_ref() else {
-                                return ParseOutcome::Emit(
+                                return ParseOutcome::emit(
                                     Err(ParseError::new("missing part headers").into()),
                                 );
                             };
-                            return ParseOutcome::Emit(Err(size_limit_error(
+                            return ParseOutcome::emit(Err(size_limit_error(
                                 headers.field_name.clone(),
                                 self.current_part_is_file,
                                 limit,
@@ -274,7 +274,7 @@ impl<S> MultipartStream<S> {
 
                     let Some(headers) = self.current_headers.take() else {
                         self.state = ParseState::Failed;
-                        return ParseOutcome::Emit(Err(ParseError::new("missing part headers").into()));
+                        return ParseOutcome::emit(Err(ParseError::new("missing part headers").into()));
                     };
 
                     self.current_part_max_size = None;
@@ -286,7 +286,7 @@ impl<S> MultipartStream<S> {
                         ParseState::Headers
                     };
 
-                    return ParseOutcome::Emit(Ok(ParsedPart { headers, body }));
+                    return ParseOutcome::emit(Ok(ParsedPart { headers, body }));
                 }
                 ParseState::End => return ParseOutcome::Done,
                 ParseState::Failed => return ParseOutcome::Done,
@@ -312,8 +312,14 @@ fn size_limit_error(field: String, is_file: bool, limit: u64) -> MulterError {
 #[derive(Debug)]
 enum ParseOutcome {
     NeedMore,
-    Emit(Result<ParsedPart, MulterError>),
+    Emit(Box<Result<ParsedPart, MulterError>>),
     Done,
+}
+
+impl ParseOutcome {
+    fn emit(item: Result<ParsedPart, MulterError>) -> Self {
+        Self::Emit(Box::new(item))
+    }
 }
 
 fn parse_header_block(raw: &[u8]) -> Result<HeaderMap, ParseError> {

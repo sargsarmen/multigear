@@ -64,12 +64,10 @@ pub fn parse_content_disposition(value: &str) -> Result<ContentDisposition, Pars
         }
     }
 
-    if disposition == "form-data" {
-        if matches!(name.as_deref(), None | Some("")) {
-            return Err(ParseError::new(
-                "form-data Content-Disposition must include non-empty `name`",
-            ));
-        }
+    if disposition == "form-data" && matches!(name.as_deref(), None | Some("")) {
+        return Err(ParseError::new(
+            "form-data Content-Disposition must include non-empty `name`",
+        ));
     }
 
     Ok(ContentDisposition {

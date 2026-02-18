@@ -417,4 +417,4 @@ Use this table to track completion:
 | 10 | DONE | `task-10-storage-memory` | - | YES |
 | 11 | DONE | `task-11-storage-disk` | - | YES |
 | 12 | DONE | `task-12-core-e2e-tests` | - | YES |
-| 13 | TODO | `task-13-integrations-examples-ci` | - | No |
+| 13 | DONE | `task-13-integrations-examples-ci` | - | YES |

@@ -56,8 +56,10 @@ fn rejects_duplicate_field_names_in_fields_selector() {
 
 #[test]
 fn rejects_invalid_numeric_limit_values() {
-    let mut limits = Limits::default();
-    limits.max_files = Some(0);
+    let limits = Limits {
+        max_files: Some(0),
+        ..Limits::default()
+    };
 
     let config = MulterConfig {
         limits,
@@ -70,9 +72,11 @@ fn rejects_invalid_numeric_limit_values() {
 
 #[test]
 fn rejects_part_limit_greater_than_max_body_size() {
-    let mut limits = Limits::default();
-    limits.max_body_size = Some(8);
-    limits.max_file_size = Some(16);
+    let limits = Limits {
+        max_body_size: Some(8),
+        max_file_size: Some(16),
+        ..Limits::default()
+    };
 
     let config = MulterConfig {
         limits,
@@ -85,8 +89,10 @@ fn rejects_part_limit_greater_than_max_body_size() {
 
 #[test]
 fn rejects_invalid_mime_pattern() {
-    let mut limits = Limits::default();
-    limits.allowed_mime_types = vec!["image".to_owned()];
+    let limits = Limits {
+        allowed_mime_types: vec!["image".to_owned()],
+        ..Limits::default()
+    };
 
     let config = MulterConfig {
         limits,
