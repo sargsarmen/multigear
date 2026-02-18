@@ -405,11 +405,11 @@ Use this table to track completion:
 
 | Task | Status | Branch | PR | Compile Gate Passed |
 |---|---|---|---|---|
-| 01 | TODO | `task-01-bootstrap` | - | No |
-| 02 | TODO | `task-02-config-model` | - | No |
-| 03 | TODO | `task-03-error-model` | - | No |
-| 04 | TODO | `task-04-builder-api` | - | No |
-| 05 | TODO | `task-05-parse-primitives` | - | No |
+| 01 | DONE | `task-01-bootstrap` | - | YES |
+| 02 | DONE | `task-02-config-model` | - | YES |
+| 03 | DONE | `task-03-error-model` | - | YES |
+| 04 | DONE | `task-04-builder-api` | - | YES |
+| 05 | DONE | `task-05-parse-primitives` | - | YES |
 | 06 | TODO | `task-06-stream-parser` | - | No |
 | 07 | TODO | `task-07-part-api` | - | No |
 | 08 | TODO | `task-08-selector-engine` | - | No |
