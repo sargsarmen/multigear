@@ -13,6 +13,7 @@ impl Field {
     /// Creates a selector field descriptor.
     ///
     /// This is a convenience alias for [`SelectedField::new`].
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(name: impl Into<String>) -> SelectedField {
         SelectedField::new(name)
     }

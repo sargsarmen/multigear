@@ -193,11 +193,11 @@ cargo check --all-features
 
 ### Required Changes
 
-- [ ] Expand CI matrix to Linux/macOS/Windows.
-- [ ] Add dedicated MSRV 1.88 job.
-- [ ] Add `cargo audit` job (install `cargo-audit` in CI).
-- [ ] Add benchmark CI job and threshold/regression policy.
-- [ ] Add stress/integration scenario for multi-GB DiskStorage uploads and memory assertions.
+- [x] Expand CI matrix to Linux/macOS/Windows.
+- [x] Add dedicated MSRV 1.88 job.
+- [x] Add `cargo audit` job (install `cargo-audit` in CI).
+- [x] Add benchmark CI job and threshold/regression policy.
+- [x] Add stress/integration scenario for multi-GB DiskStorage uploads and memory assertions.
 
 ### Exit Gate
 
@@ -220,4 +220,4 @@ cargo bench --bench upload_bench
 | 06 | Part/Multipart Public API Parity | DONE |
 | 07 | Framework Integrations | DONE |
 | 08 | Tracing/Serde/DX Docs | DONE |
-| 09 | CI/Security/Performance Acceptance | TODO |
+| 09 | CI/Security/Performance Acceptance | DONE |

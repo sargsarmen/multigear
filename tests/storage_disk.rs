@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use bytes::Bytes;
-use futures::{channel::mpsc, stream};
+use futures::{SinkExt, channel::mpsc, stream};
 use rust_multer::{DiskStorage, FilenameStrategy, Multer, MulterError, Multipart};
 use rust_multer::storage::disk::sanitize_filename;
 use uuid::Uuid;
@@ -197,6 +197,63 @@ async fn streams_large_file_to_disk_from_chunked_input() {
     let path = stored.path.expect("disk path should be present");
     let metadata = tokio::fs::metadata(path).await.expect("metadata should exist");
     assert_eq!(metadata.len(), 128 * 64 * 1024);
+
+    cleanup(root).await;
+}
+
+#[tokio::test]
+#[ignore = "stress scenario for CI/release validation"]
+async fn stress_multi_gb_disk_upload_uses_bounded_stream_memory() {
+    const CHUNK_SIZE: usize = 64 * 1024;
+    const QUEUE_CAPACITY: usize = 1;
+
+    let root = temp_root();
+    let storage = DiskStorage::builder()
+        .destination(&root)
+        .filename(FilenameStrategy::Random)
+        .build()
+        .expect("builder should succeed");
+    let multer = Multer::new(storage);
+
+    let chunk_count: usize = match std::env::var("RUST_MULTER_STRESS_2GB") {
+        Ok(value) if value == "1" => 32_768, // 2 GiB at 64 KiB/chunk
+        _ => 4_096,                           // 256 MiB default stress size
+    };
+    let expected_size = (chunk_count as u64) * (CHUNK_SIZE as u64);
+
+    // Memory guardrail: producer queue remains bounded to one payload chunk.
+
+    let (mut tx, rx) = mpsc::channel::<Result<Bytes, MulterError>>(QUEUE_CAPACITY);
+    let producer = tokio::spawn(async move {
+        tx.send(Ok(Bytes::from_static(
+            b"--BOUND\r\nContent-Disposition: form-data; name=\"upload\"; filename=\"huge.bin\"\r\n\r\n",
+        )))
+        .await
+        .expect("send prelude");
+        for _ in 0..chunk_count {
+            tx.send(Ok(Bytes::from(vec![b'x'; CHUNK_SIZE])))
+                .await
+                .expect("send payload chunk");
+        }
+        tx.send(Ok(Bytes::from_static(b"\r\n--BOUND--\r\n")))
+            .await
+            .expect("send trailer");
+    });
+
+    let mut multipart = Multipart::new("BOUND", rx).expect("multipart should initialize");
+    let part = multipart
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
+
+    let stored = multer.store(part).await.expect("store should succeed");
+    producer.await.expect("producer should finish");
+
+    assert_eq!(stored.size, expected_size);
+    let path = stored.path.expect("disk path should be present");
+    let metadata = tokio::fs::metadata(path).await.expect("metadata should exist");
+    assert_eq!(metadata.len(), expected_size);
 
     cleanup(root).await;
 }
