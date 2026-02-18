@@ -3,11 +3,11 @@
 use axum::{
     extract::FromRequest,
     body::Bytes,
-    body::to_bytes,
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use futures::{Stream, StreamExt, stream};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::{Multer, MulterError, Multipart, ParseError, StorageEngine};
@@ -17,8 +17,11 @@ pub type AxumBodyStream<S> =
     stream::Map<S, fn(Result<Bytes, axum::Error>) -> Result<Bytes, MulterError>>;
 
 /// Axum multipart type used by [`MulterExtractor`].
-pub type AxumMultipart =
-    Multipart<stream::Iter<std::array::IntoIter<Result<Bytes, MulterError>, 1>>>;
+pub type AxumBodyBoxStream =
+    Pin<Box<dyn Stream<Item = Result<Bytes, MulterError>> + Send + 'static>>;
+
+/// Axum multipart type used by [`MulterExtractor`].
+pub type AxumMultipart = Multipart<AxumBodyBoxStream>;
 
 /// Rejection type returned by Axum integration extractors.
 #[derive(Debug)]
@@ -32,11 +35,11 @@ impl IntoResponse for AxumMulterRejection {
 
 /// Trait implemented by Axum state types that can build `Multipart` via `Multer`.
 pub trait MulterState {
-    /// Builds multipart from content type and full body bytes.
+    /// Builds multipart from content type and a streaming request body.
     fn build_multipart(
         &self,
         content_type: &str,
-        body: Bytes,
+        body: AxumBodyBoxStream,
     ) -> Result<AxumMultipart, MulterError>;
 }
 
@@ -47,9 +50,9 @@ where
     fn build_multipart(
         &self,
         content_type: &str,
-        body: Bytes,
+        body: AxumBodyBoxStream,
     ) -> Result<AxumMultipart, MulterError> {
-        self.multipart_from_content_type(content_type, stream::iter([Ok(body)]))
+        self.multipart_from_content_type(content_type, body)
     }
 }
 
@@ -60,16 +63,22 @@ where
     fn build_multipart(
         &self,
         content_type: &str,
-        body: Bytes,
+        body: AxumBodyBoxStream,
     ) -> Result<AxumMultipart, MulterError> {
         self.as_ref().build_multipart(content_type, body)
     }
 }
 
 /// Extractor that parses request body into [`Multipart`] using `Multer` state.
-#[derive(Debug)]
 pub struct MulterExtractor(pub AxumMultipart);
 
+impl std::fmt::Debug for MulterExtractor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("MulterExtractor").field(&"<multipart>").finish()
+    }
+}
+
+#[async_trait::async_trait]
 impl<AppState> FromRequest<AppState> for MulterExtractor
 where
     AppState: Send + Sync + MulterState,
@@ -82,12 +91,11 @@ where
     ) -> Result<Self, Self::Rejection> {
         let (parts, body) = request.into_parts();
         let content_type = content_type_from_headers(&parts.headers).map_err(AxumMulterRejection)?;
-        let body = to_bytes(body, usize::MAX).await.map_err(|err| {
-            AxumMulterRejection(ParseError::new(format!("axum body read error: {err}")).into())
-        })?;
+        let body_stream = map_body_stream(body.into_data_stream());
+        let body_stream = Box::pin(body_stream) as AxumBodyBoxStream;
 
         let multipart = state
-            .build_multipart(content_type, body)
+            .build_multipart(content_type, body_stream)
             .map_err(AxumMulterRejection)?;
 
         Ok(Self(multipart))

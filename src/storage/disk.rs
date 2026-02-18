@@ -156,7 +156,7 @@ impl DiskStorage {
     }
 
     fn should_store(&self, meta: &FileMeta) -> bool {
-        self.filter.as_ref().is_none_or(|filter| filter(meta))
+        self.filter.as_ref().map_or(true, |filter| filter(meta))
     }
 }
 

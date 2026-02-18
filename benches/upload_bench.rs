@@ -32,7 +32,7 @@ fn build_body(size: usize) -> Vec<u8> {
     out.extend_from_slice(
         b"--BOUND\r\nContent-Disposition: form-data; name=\"upload\"; filename=\"bench.bin\"\r\n\r\n",
     );
-    out.extend(std::iter::repeat_n(b'x', size));
+    out.extend(std::iter::repeat(b'x').take(size));
     out.extend_from_slice(b"\r\n--BOUND--\r\n");
     out
 }

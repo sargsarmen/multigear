@@ -215,8 +215,8 @@ async fn stress_multi_gb_disk_upload_uses_bounded_stream_memory() {
         .expect("builder should succeed");
     let multer = Multer::new(storage);
 
-    let chunk_count: usize = match std::env::var("RUST_MULTER_STRESS_2GB") {
-        Ok(value) if value == "1" => 32_768, // 2 GiB at 64 KiB/chunk
+    let chunk_count: usize = match std::env::var("RUST_MULTER_STRESS_4GB") {
+        Ok(value) if value == "1" => 65_536, // 4 GiB at 64 KiB/chunk
         _ => 4_096,                           // 256 MiB default stress size
     };
     let expected_size = (chunk_count as u64) * (CHUNK_SIZE as u64);

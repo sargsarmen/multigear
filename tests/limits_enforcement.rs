@@ -260,6 +260,50 @@ async fn global_mime_rules_still_apply_when_field_rule_allows() {
     ));
 }
 
+#[tokio::test]
+async fn enforces_per_field_text_size_limit() {
+    let config = MulterConfig {
+        selector: Selector::fields([SelectedField::text("meta").max_size(4)]),
+        unknown_field_policy: UnknownFieldPolicy::Reject,
+        limits: Limits::default(),
+    };
+    let body = multipart_body(&[part("meta", None, None, "hello")]);
+    let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
+        .expect("multipart should initialize");
+
+    let mut part = multipart
+        .next_part()
+        .await
+        .expect("headers should parse")
+        .expect("item expected");
+    let err = part.text().await.expect_err("text field should fail per-field size limit");
+    assert!(matches!(
+        err,
+        MulterError::FieldSizeLimitExceeded {
+            field,
+            max_field_size: 4
+        } if field == "meta"
+    ));
+}
+
+#[tokio::test]
+async fn fields_selector_rejects_unknown_text_fields() {
+    let config = MulterConfig {
+        selector: Selector::fields([SelectedField::text("meta")]),
+        unknown_field_policy: UnknownFieldPolicy::Reject,
+        limits: Limits::default(),
+    };
+    let body = multipart_body(&[part("other", None, None, "value")]);
+    let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
+        .expect("multipart should initialize");
+
+    let err = multipart.next_part().await.expect_err("unknown text field should fail");
+    assert!(matches!(
+        err,
+        MulterError::UnexpectedField { field } if field == "other"
+    ));
+}
+
 fn config_with_limits(limits: Limits) -> MulterConfig {
     MulterConfig {
         selector: Selector::any(),

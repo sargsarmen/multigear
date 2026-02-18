@@ -117,6 +117,17 @@ fn rejects_invalid_selected_field_mime_pattern() {
 }
 
 #[test]
+fn rejects_invalid_selected_field_max_size() {
+    let config = MulterConfig {
+        selector: Selector::fields([SelectedField::text("meta").max_size(0)]),
+        ..MulterConfig::default()
+    };
+
+    let result = config.validate();
+    assert!(matches!(result, Err(ConfigError::InvalidFieldMaxSize { .. })));
+}
+
+#[test]
 fn builder_validation_surfaces_config_errors() {
     let config = MulterConfig {
         selector: Selector::single(""),

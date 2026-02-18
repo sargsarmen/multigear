@@ -41,21 +41,21 @@ jobs:
         run: cargo check --examples --all-features
 
   msrv:
-    name: msrv (1.88.0)
+    name: msrv core (1.75.0)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.88.0
-        uses: dtolnay/rust-toolchain@1.88.0
+      - name: Install Rust 1.75.0
+        uses: dtolnay/rust-toolchain@1.75.0
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Cargo Check (MSRV)
-        run: cargo +1.88.0 check --all-targets --all-features
+      - name: Cargo Check (MSRV Core)
+        run: cargo +1.75.0 check --lib --features tokio-rt
 
   audit:
     name: cargo-audit

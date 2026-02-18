@@ -35,7 +35,7 @@ pub mod actix;
 pub mod axum;
 
 pub use builder::MulterBuilder;
-pub use config::{MulterConfig, SelectedField, Selector, UnknownFieldPolicy};
+pub use config::{MulterConfig, SelectedField, SelectedFieldKind, Selector, UnknownFieldPolicy};
 pub use error::{ConfigError, MulterError, ParseError, StorageError};
 pub use field::{Field, FieldKind, FileField, TextField};
 pub use limits::Limits;

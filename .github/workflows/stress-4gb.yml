@@ -1,0 +1,27 @@
+name: Stress 4GB Upload
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+jobs:
+  disk-stress-4gb:
+    name: DiskStorage 4GB stress
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run 4GB DiskStorage stress test
+        env:
+          RUST_MULTER_STRESS_4GB: "1"
+        run: cargo test --all-features --test storage_disk -- --ignored stress_multi_gb_disk_upload_uses_bounded_stream_memory

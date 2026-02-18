@@ -75,6 +75,24 @@ where
             };
 
             if headers.file_name.is_none() {
+                match self.selector.evaluate_text_field(&headers.field_name) {
+                    Ok(SelectorAction::Accept) => {}
+                    Ok(SelectorAction::Ignore) => {
+                        #[cfg(feature = "tracing")]
+                        tracing::debug!(
+                            field_name = headers.field_name.as_str(),
+                            "multipart: ignoring unmatched text field"
+                        );
+                        self.inner.drain_current_part().await?;
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                }
+
+                if let Some(max_size) = self.selector.field_text_max_size(&headers.field_name) {
+                    self.inner.tighten_current_part_max_size(Some(max_size));
+                }
+
                 self.field_count += 1;
                 if let Some(max_fields) = self.limits.max_fields {
                     if self.field_count > max_fields {

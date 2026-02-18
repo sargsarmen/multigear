@@ -13,6 +13,12 @@ pub enum ConfigError {
         /// Name of the field with an invalid count.
         name: String,
     },
+    /// A field has an invalid `max_size` of zero.
+    #[error("field `{name}` has invalid max_size of 0")]
+    InvalidFieldMaxSize {
+        /// Name of the field with an invalid size.
+        name: String,
+    },
     /// An `array(...)` selector has an invalid `max_count` of zero.
     #[error("array selector for field `{name}` has invalid max_count of 0")]
     InvalidArrayMaxCount {

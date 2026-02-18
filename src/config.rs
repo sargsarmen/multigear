@@ -2,14 +2,28 @@ use std::collections::HashSet;
 
 use crate::{error::ConfigError, limits::Limits};
 
+/// Discriminates selected field handling between file and text parts.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectedFieldKind {
+    /// File upload field.
+    File,
+    /// Text field.
+    Text,
+}
+
 /// Allowed file field declaration for `fields(...)` selector mode.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectedField {
     /// Logical field name.
     pub name: String,
+    /// Field kind used for selector evaluation.
+    pub kind: SelectedFieldKind,
     /// Maximum file count accepted for this field.
     pub max_count: Option<usize>,
+    /// Maximum size accepted for this field in bytes.
+    pub max_size: Option<u64>,
     /// Allowed MIME patterns for this field (for example: `image/*`).
     pub allowed_mime_types: Vec<String>,
 }
@@ -19,7 +33,20 @@ impl SelectedField {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
+            kind: SelectedFieldKind::File,
             max_count: None,
+            max_size: None,
+            allowed_mime_types: Vec::new(),
+        }
+    }
+
+    /// Creates a selected text field.
+    pub fn text(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            kind: SelectedFieldKind::Text,
+            max_count: None,
+            max_size: None,
             allowed_mime_types: Vec::new(),
         }
     }
@@ -33,6 +60,17 @@ impl SelectedField {
     /// Alias for [`SelectedField::with_max_count`].
     pub fn max_count(self, max_count: usize) -> Self {
         self.with_max_count(max_count)
+    }
+
+    /// Sets the maximum size accepted for this field in bytes.
+    pub fn with_max_size(mut self, max_size: u64) -> Self {
+        self.max_size = Some(max_size);
+        self
+    }
+
+    /// Alias for [`SelectedField::with_max_size`].
+    pub fn max_size(self, max_size: u64) -> Self {
+        self.with_max_size(max_size)
     }
 
     /// Sets MIME patterns accepted for this field.
@@ -62,6 +100,12 @@ impl SelectedField {
 
         if matches!(self.max_count, Some(0)) {
             return Err(ConfigError::InvalidFieldMaxCount {
+                name: self.name.clone(),
+            });
+        }
+
+        if matches!(self.max_size, Some(0)) {
+            return Err(ConfigError::InvalidFieldMaxSize {
                 name: self.name.clone(),
             });
         }

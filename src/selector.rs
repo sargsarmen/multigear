@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    MulterError, SelectedField, Selector, UnknownFieldPolicy,
+    MulterError, SelectedField, SelectedFieldKind, Selector, UnknownFieldPolicy,
 };
 
 /// Runtime decision for a candidate incoming file part.
@@ -55,11 +55,32 @@ impl SelectorEngine {
                 let Some(rules) = self.fields.get(field_name).cloned() else {
                     return self.handle_unknown_field(field_name);
                 };
+                if rules.kind != SelectedFieldKind::File {
+                    return self.handle_unknown_field(field_name);
+                }
                 self.record_with_limit(field_name, rules.max_count)?;
                 Ok(SelectorAction::Accept)
             }
             Selector::None => self.handle_unknown_field(field_name),
             Selector::Any => Ok(SelectorAction::Accept),
+        }
+    }
+
+    /// Applies selector rules for a text field and returns the action.
+    pub fn evaluate_text_field(&self, field_name: &str) -> Result<SelectorAction, MulterError> {
+        match &self.selector {
+            Selector::Fields(_) => {
+                let Some(rules) = self.fields.get(field_name) else {
+                    return self.handle_unknown_field(field_name);
+                };
+                if rules.kind != SelectedFieldKind::Text {
+                    return self.handle_unknown_field(field_name);
+                }
+                Ok(SelectorAction::Accept)
+            }
+            Selector::Single { .. } | Selector::Array { .. } | Selector::None | Selector::Any => {
+                Ok(SelectorAction::Accept)
+            }
         }
     }
 
@@ -92,11 +113,24 @@ impl SelectorEngine {
             .get(field_name)
             .map(|rules| rules.allowed_mime_types.as_slice())
     }
+
+    /// Returns the configured text size limit for a selected field, if present.
+    pub fn field_text_max_size(&self, field_name: &str) -> Option<u64> {
+        self.fields.get(field_name).and_then(|rules| {
+            if rules.kind == SelectedFieldKind::Text {
+                rules.max_size
+            } else {
+                None
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
 struct FieldRules {
+    kind: SelectedFieldKind,
     max_count: Option<usize>,
+    max_size: Option<u64>,
     allowed_mime_types: Vec<String>,
 }
 
@@ -106,14 +140,18 @@ fn build_fields_map(selector: &Selector) -> HashMap<String, FieldRules> {
             let mut map = HashMap::with_capacity(fields.len());
             for SelectedField {
                 name,
+                kind,
                 max_count,
+                max_size,
                 allowed_mime_types,
             } in fields
             {
                 map.insert(
                     name.clone(),
                     FieldRules {
+                        kind: *kind,
                         max_count: *max_count,
+                        max_size: *max_size,
                         allowed_mime_types: allowed_mime_types.clone(),
                     },
                 );

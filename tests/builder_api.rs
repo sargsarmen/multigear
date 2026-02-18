@@ -1,7 +1,8 @@
 #![allow(missing_docs)]
 
 use rust_multer::{
-    ConfigError, Field, Limits, Multer, MulterBuilder, MulterConfig, Selector, UnknownFieldPolicy,
+    ConfigError, Field, Limits, Multer, MulterBuilder, MulterConfig, SelectedFieldKind, Selector,
+    UnknownFieldPolicy,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,14 +117,48 @@ fn fields_accept_prd_style_field_descriptors() {
         Selector::Fields(fields) => {
             assert_eq!(fields.len(), 2);
             assert_eq!(fields[0].name, "avatar");
+            assert_eq!(fields[0].kind, SelectedFieldKind::File);
             assert_eq!(fields[0].max_count, Some(1));
+            assert_eq!(fields[0].max_size, None);
             assert_eq!(fields[0].allowed_mime_types, vec!["image/*".to_owned()]);
             assert_eq!(fields[1].name, "docs");
+            assert_eq!(fields[1].kind, SelectedFieldKind::File);
             assert_eq!(fields[1].max_count, Some(2));
+            assert_eq!(fields[1].max_size, None);
             assert_eq!(
                 fields[1].allowed_mime_types,
                 vec!["application/pdf".to_owned()]
             );
+        }
+        other => panic!("expected fields selector, got {other:?}"),
+    }
+}
+
+#[test]
+fn fields_support_file_and_text_models() {
+    let multer = Multer::builder()
+        .fields([
+            Field::text("meta").max_size(8 * 1024),
+            Field::file("avatar")
+                .max_count(1)
+                .allowed_mime_types(["image/png"]),
+        ])
+        .build()
+        .expect("builder config should validate");
+
+    match &multer.config().selector {
+        Selector::Fields(fields) => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].name, "meta");
+            assert_eq!(fields[0].kind, SelectedFieldKind::Text);
+            assert_eq!(fields[0].max_size, Some(8 * 1024));
+            assert_eq!(fields[0].allowed_mime_types, Vec::<String>::new());
+
+            assert_eq!(fields[1].name, "avatar");
+            assert_eq!(fields[1].kind, SelectedFieldKind::File);
+            assert_eq!(fields[1].max_count, Some(1));
+            assert_eq!(fields[1].max_size, None);
+            assert_eq!(fields[1].allowed_mime_types, vec!["image/png".to_owned()]);
         }
         other => panic!("expected fields selector, got {other:?}"),
     }

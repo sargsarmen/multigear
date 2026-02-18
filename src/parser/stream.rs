@@ -91,6 +91,19 @@ impl<S> MultipartStream<S> {
         self.state == ParseState::Body
     }
 
+    /// Tightens the active part size limit while a part body is being read.
+    pub fn tighten_current_part_max_size(&mut self, limit: Option<u64>) {
+        if self.state != ParseState::Body {
+            return;
+        }
+
+        self.current_part_max_size = match (self.current_part_max_size, limit) {
+            (Some(existing), Some(next)) => Some(existing.min(next)),
+            (None, Some(next)) => Some(next),
+            (existing, None) => existing,
+        };
+    }
+
     /// Polls until the next part headers are available.
     pub fn poll_next_part_headers(
         &mut self,
