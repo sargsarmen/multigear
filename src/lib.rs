@@ -17,6 +17,8 @@ pub mod limits;
 pub mod multipart;
 /// Parsed multipart part API.
 pub mod part;
+/// Runtime selector engine.
+pub mod selector;
 /// Low-level parser components.
 pub mod parser;
 /// Storage engine traits and implementations.
@@ -34,6 +36,7 @@ pub use field::{Field, FieldKind, FileField, TextField};
 pub use limits::Limits;
 pub use multipart::Multipart;
 pub use part::Part;
+pub use selector::{SelectorAction, SelectorEngine};
 pub use storage::{NoopStorage, StorageEngine};
 
 /// Main `rust-multer` entry point.

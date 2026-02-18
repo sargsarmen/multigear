@@ -111,6 +111,14 @@ pub enum MulterError {
         /// Field name encountered in the stream.
         field: String,
     },
+    /// File count for a field exceeded the active selector limit.
+    #[error("field `{field}` exceeded max count of {max_count}")]
+    FieldCountLimitExceeded {
+        /// Field name that exceeded its file-count limit.
+        field: String,
+        /// Maximum allowed file count for this field.
+        max_count: usize,
+    },
     /// Multipart stream ended before a complete terminal boundary.
     #[error("multipart stream ended unexpectedly")]
     IncompleteStream,
