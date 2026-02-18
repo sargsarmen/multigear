@@ -33,6 +33,17 @@ enum ParseState {
     Failed,
 }
 
+/// Stream-level limits enforced while parsing multipart input.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StreamLimits {
+    /// Maximum accepted file size in bytes for a single file part.
+    pub max_file_size: Option<u64>,
+    /// Maximum accepted size in bytes for a text field.
+    pub max_field_size: Option<u64>,
+    /// Maximum request body size in bytes.
+    pub max_body_size: Option<u64>,
+}
+
 /// Incremental multipart parser over a chunked byte stream.
 #[derive(Debug)]
 pub struct MultipartStream<S> {
@@ -43,12 +54,25 @@ pub struct MultipartStream<S> {
     buffer: Vec<u8>,
     state: ParseState,
     current_headers: Option<ParsedPartHeaders>,
+    current_part_max_size: Option<u64>,
+    current_part_is_file: bool,
+    limits: StreamLimits,
+    received_body_bytes: u64,
     upstream_done: bool,
 }
 
 impl<S> MultipartStream<S> {
     /// Creates a new streaming parser for a known multipart boundary.
     pub fn new(boundary: impl Into<String>, stream: S) -> Result<Self, ParseError> {
+        Self::with_limits(boundary, stream, StreamLimits::default())
+    }
+
+    /// Creates a new streaming parser with explicit stream limits.
+    pub fn with_limits(
+        boundary: impl Into<String>,
+        stream: S,
+        limits: StreamLimits,
+    ) -> Result<Self, ParseError> {
         let boundary = boundary.into();
         validate_boundary_input(&boundary)?;
 
@@ -64,6 +88,10 @@ impl<S> MultipartStream<S> {
             buffer: Vec::new(),
             state: ParseState::StartBoundary,
             current_headers: None,
+            current_part_max_size: None,
+            current_part_is_file: false,
+            limits,
+            received_body_bytes: 0,
             upstream_done: false,
         })
     }
@@ -91,6 +119,16 @@ where
             match Pin::new(&mut self.stream).poll_next(cx) {
                 Poll::Ready(Some(Ok(chunk))) => {
                     if !chunk.is_empty() {
+                        if let Some(max_body_size) = self.limits.max_body_size {
+                            let next = self.received_body_bytes.saturating_add(chunk.len() as u64);
+                            if next > max_body_size {
+                                self.state = ParseState::Failed;
+                                return Poll::Ready(Some(Err(MulterError::BodySizeLimitExceeded {
+                                    max_body_size,
+                                })));
+                            }
+                            self.received_body_bytes = next;
+                        }
                         self.buffer.extend_from_slice(&chunk);
                     }
                 }
@@ -151,10 +189,37 @@ impl<S> MultipartStream<S> {
                     };
 
                     self.current_headers = Some(headers);
+                    self.current_part_is_file = self
+                        .current_headers
+                        .as_ref()
+                        .is_some_and(|value| value.file_name.is_some());
+                    self.current_part_max_size = if self.current_part_is_file {
+                        self.limits.max_file_size
+                    } else {
+                        self.limits.max_field_size
+                    };
                     self.state = ParseState::Body;
                 }
                 ParseState::Body => {
                     let Some(split) = find_subslice(&self.buffer, &self.delimiter) else {
+                        if let Some(limit) = self.current_part_max_size {
+                            let max_tail = self.delimiter.len().saturating_sub(1);
+                            let guaranteed_body_len = self.buffer.len().saturating_sub(max_tail);
+                            if (guaranteed_body_len as u64) > limit {
+                                self.state = ParseState::Failed;
+                                let Some(headers) = self.current_headers.as_ref() else {
+                                    return ParseOutcome::Emit(
+                                        Err(ParseError::new("missing part headers").into()),
+                                    );
+                                };
+                                return ParseOutcome::Emit(Err(size_limit_error(
+                                    headers.field_name.clone(),
+                                    self.current_part_is_file,
+                                    limit,
+                                )));
+                            }
+                        }
+
                         if has_malformed_boundary_line(
                             &self.buffer,
                             &self.boundary_line,
@@ -191,10 +256,29 @@ impl<S> MultipartStream<S> {
                     let body = Bytes::from(self.buffer[..split].to_vec());
                     self.buffer.drain(..consumed);
 
+                    if let Some(limit) = self.current_part_max_size {
+                        if (body.len() as u64) > limit {
+                            self.state = ParseState::Failed;
+                            let Some(headers) = self.current_headers.as_ref() else {
+                                return ParseOutcome::Emit(
+                                    Err(ParseError::new("missing part headers").into()),
+                                );
+                            };
+                            return ParseOutcome::Emit(Err(size_limit_error(
+                                headers.field_name.clone(),
+                                self.current_part_is_file,
+                                limit,
+                            )));
+                        }
+                    }
+
                     let Some(headers) = self.current_headers.take() else {
                         self.state = ParseState::Failed;
                         return ParseOutcome::Emit(Err(ParseError::new("missing part headers").into()));
                     };
+
+                    self.current_part_max_size = None;
+                    self.current_part_is_file = false;
 
                     self.state = if is_terminal {
                         ParseState::End
@@ -207,6 +291,20 @@ impl<S> MultipartStream<S> {
                 ParseState::End => return ParseOutcome::Done,
                 ParseState::Failed => return ParseOutcome::Done,
             }
+        }
+    }
+}
+
+fn size_limit_error(field: String, is_file: bool, limit: u64) -> MulterError {
+    if is_file {
+        MulterError::FileSizeLimitExceeded {
+            field,
+            max_file_size: limit,
+        }
+    } else {
+        MulterError::FieldSizeLimitExceeded {
+            field,
+            max_field_size: limit,
         }
     }
 }

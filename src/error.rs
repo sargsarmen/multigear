@@ -119,6 +119,48 @@ pub enum MulterError {
         /// Maximum allowed file count for this field.
         max_count: usize,
     },
+    /// A file part exceeded the configured size limit.
+    #[error("file field `{field}` exceeded max file size of {max_file_size} bytes")]
+    FileSizeLimitExceeded {
+        /// Field name that exceeded the file-size limit.
+        field: String,
+        /// Maximum allowed file size in bytes.
+        max_file_size: u64,
+    },
+    /// A text part exceeded the configured size limit.
+    #[error("text field `{field}` exceeded max field size of {max_field_size} bytes")]
+    FieldSizeLimitExceeded {
+        /// Field name that exceeded the text-size limit.
+        field: String,
+        /// Maximum allowed text field size in bytes.
+        max_field_size: u64,
+    },
+    /// The number of accepted file parts exceeded the configured limit.
+    #[error("multipart request exceeded max files limit of {max_files}")]
+    FilesLimitExceeded {
+        /// Maximum allowed number of file parts.
+        max_files: usize,
+    },
+    /// The number of accepted text parts exceeded the configured limit.
+    #[error("multipart request exceeded max fields limit of {max_fields}")]
+    FieldsLimitExceeded {
+        /// Maximum allowed number of text parts.
+        max_fields: usize,
+    },
+    /// The request body exceeded the configured body-size limit.
+    #[error("multipart request exceeded max body size of {max_body_size} bytes")]
+    BodySizeLimitExceeded {
+        /// Maximum allowed request body size in bytes.
+        max_body_size: u64,
+    },
+    /// A file MIME type is not permitted by the configured allowlist.
+    #[error("file field `{field}` has disallowed MIME type `{mime}`")]
+    MimeTypeNotAllowed {
+        /// File field name.
+        field: String,
+        /// MIME type encountered for the file part.
+        mime: String,
+    },
     /// Multipart stream ended before a complete terminal boundary.
     #[error("multipart stream ended unexpectedly")]
     IncompleteStream,

@@ -20,6 +20,19 @@ impl Limits {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Returns `true` when `mime` is allowed by the configured allowlist.
+    ///
+    /// When no allowlist is configured, all MIME types are accepted.
+    pub fn is_mime_allowed(&self, mime: &mime::Mime) -> bool {
+        if self.allowed_mime_types.is_empty() {
+            return true;
+        }
+
+        self.allowed_mime_types
+            .iter()
+            .any(|pattern| mime_matches_pattern(mime, pattern))
+    }
 }
 
 impl Default for Limits {
@@ -33,4 +46,14 @@ impl Default for Limits {
             allowed_mime_types: Vec::new(),
         }
     }
+}
+
+fn mime_matches_pattern(mime: &mime::Mime, pattern: &str) -> bool {
+    if let Some((kind, subtype)) = pattern.split_once('/') {
+        if subtype == "*" {
+            return mime.type_().as_str().eq_ignore_ascii_case(kind);
+        }
+    }
+
+    mime.essence_str().eq_ignore_ascii_case(pattern)
 }
