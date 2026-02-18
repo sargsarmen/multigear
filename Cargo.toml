@@ -3,4 +3,32 @@ name = "rust-multer"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+axum = ["dep:axum"]
+actix = ["dep:actix-web"]
+tracing = ["dep:tracing"]
+serde = ["dep:serde"]
+
 [dependencies]
+async-trait = "0.1"
+bytes = "1"
+futures = "0.3"
+http = "1"
+mime = "0.3"
+pin-project = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "macros", "io-util", "fs", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+
+axum = { version = "0.8", optional = true }
+actix-web = { version = "4", optional = true }
+tracing = { version = "0.1", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[lints.rust]
+missing_docs = "warn"
+rust_2018_idioms = "warn"
+unreachable_pub = "warn"
+unsafe_code = "forbid"
+unused_qualifications = "warn"
