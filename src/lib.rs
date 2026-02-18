@@ -39,17 +39,39 @@ pub use storage::{NoopStorage, StorageEngine};
 /// Main `rust-multer` entry point.
 #[derive(Debug)]
 pub struct Multer<S = NoopStorage> {
+    config: MulterConfig,
     storage: S,
 }
 
 impl<S> Multer<S> {
     /// Creates a new multer instance with the given storage backend.
     pub fn new(storage: S) -> Self {
-        Self { storage }
+        Self {
+            config: MulterConfig::default(),
+            storage,
+        }
+    }
+
+    /// Creates a new multer instance with explicit validated configuration.
+    pub fn with_config(storage: S, config: MulterConfig) -> Result<Self, ConfigError> {
+        config.validate()?;
+        Ok(Self { config, storage })
+    }
+
+    /// Returns an immutable reference to the active configuration.
+    pub fn config(&self) -> &MulterConfig {
+        &self.config
     }
 
     /// Returns an immutable reference to the configured storage backend.
     pub fn storage(&self) -> &S {
         &self.storage
+    }
+}
+
+impl Multer<NoopStorage> {
+    /// Creates a fluent builder with permissive defaults.
+    pub fn builder() -> MulterBuilder {
+        MulterBuilder::default()
     }
 }
