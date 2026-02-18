@@ -1,10 +1,16 @@
 [package]
 name = "rust-multer"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+description = "Framework-agnostic multipart/form-data parser for Rust"
+keywords = ["multipart", "upload", "axum", "actix", "form"]
+categories = ["web-programming", "asynchronous"]
 
 [features]
-default = []
+default = ["tokio-rt"]
+tokio-rt = []
 axum = ["dep:axum"]
 actix = ["dep:actix-web"]
 tracing = ["dep:tracing"]

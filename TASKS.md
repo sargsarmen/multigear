@@ -18,10 +18,10 @@ This file tracks only the requirements still missing after comparing the current
 
 ### Required Changes
 
-- [ ] Add `tokio-rt` feature and make it part of `default`.
-- [ ] Align package metadata with PRD release expectations.
-- [ ] Set and enforce `rust-version = "1.88"`.
-- [ ] Ensure dependencies/features remain compatible with MSRV gate.
+- [x] Add `tokio-rt` feature and make it part of `default`.
+- [x] Align package metadata with PRD release expectations.
+- [x] Set and enforce `rust-version = "1.88"`.
+- [x] Ensure dependencies/features remain compatible with MSRV gate.
 
 ### Exit Gate
 
@@ -212,7 +212,7 @@ cargo bench --bench upload_bench
 
 | Task | Category | Status |
 |---|---|---|
-| 01 | Package/Feature/Release Baseline | TODO |
+| 01 | Package/Feature/Release Baseline | DONE |
 | 02 | Streaming Parser and Memory-Safety | TODO |
 | 03 | RFC 7578 Edge Cases | TODO |
 | 04 | Builder API and Validation Model | TODO |
