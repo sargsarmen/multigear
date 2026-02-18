@@ -68,11 +68,11 @@ impl<S> MulterBuilder<S> {
     }
 
     /// Selects multiple named fields.
-    pub fn fields(
-        mut self,
-        fields: impl IntoIterator<Item = crate::config::SelectedField>,
-    ) -> Self {
-        self.config.selector = Selector::fields(fields);
+    pub fn fields<F>(mut self, fields: impl IntoIterator<Item = F>) -> Self
+    where
+        F: Into<crate::config::SelectedField>,
+    {
+        self.config.selector = Selector::fields(fields.into_iter().map(Into::into));
         self
     }
 
@@ -94,9 +94,55 @@ impl<S> MulterBuilder<S> {
         self
     }
 
+    /// Alias for [`MulterBuilder::unknown_field_policy`].
+    pub fn on_unknown_field(self, policy: UnknownFieldPolicy) -> Self {
+        self.unknown_field_policy(policy)
+    }
+
     /// Sets global multipart limits.
     pub fn limits(mut self, limits: Limits) -> Self {
         self.config.limits = limits;
+        self
+    }
+
+    /// Sets the maximum accepted file size in bytes.
+    pub fn max_file_size(mut self, max_file_size: u64) -> Self {
+        self.config.limits.max_file_size = Some(max_file_size);
+        self
+    }
+
+    /// Sets the maximum accepted number of files.
+    pub fn max_files(mut self, max_files: usize) -> Self {
+        self.config.limits.max_files = Some(max_files);
+        self
+    }
+
+    /// Sets the maximum accepted text field size in bytes.
+    pub fn max_field_size(mut self, max_field_size: u64) -> Self {
+        self.config.limits.max_field_size = Some(max_field_size);
+        self
+    }
+
+    /// Sets the maximum accepted number of text fields.
+    pub fn max_fields(mut self, max_fields: usize) -> Self {
+        self.config.limits.max_fields = Some(max_fields);
+        self
+    }
+
+    /// Sets the maximum accepted multipart request size in bytes.
+    pub fn max_body_size(mut self, max_body_size: u64) -> Self {
+        self.config.limits.max_body_size = Some(max_body_size);
+        self
+    }
+
+    /// Sets the global list of allowed MIME patterns.
+    pub fn allowed_mime_types<I, M>(mut self, allowed_mime_types: I) -> Self
+    where
+        I: IntoIterator<Item = M>,
+        M: Into<String>,
+    {
+        self.config.limits.allowed_mime_types =
+            allowed_mime_types.into_iter().map(Into::into).collect();
         self
     }
 

@@ -9,6 +9,8 @@ pub struct SelectedField {
     pub name: String,
     /// Maximum file count accepted for this field.
     pub max_count: Option<usize>,
+    /// Allowed MIME patterns for this field (for example: `image/*`).
+    pub allowed_mime_types: Vec<String>,
 }
 
 impl SelectedField {
@@ -17,6 +19,7 @@ impl SelectedField {
         Self {
             name: name.into(),
             max_count: None,
+            allowed_mime_types: Vec::new(),
         }
     }
 
@@ -24,6 +27,30 @@ impl SelectedField {
     pub fn with_max_count(mut self, max_count: usize) -> Self {
         self.max_count = Some(max_count);
         self
+    }
+
+    /// Alias for [`SelectedField::with_max_count`].
+    pub fn max_count(self, max_count: usize) -> Self {
+        self.with_max_count(max_count)
+    }
+
+    /// Sets MIME patterns accepted for this field.
+    pub fn with_allowed_mime_types<I, M>(mut self, patterns: I) -> Self
+    where
+        I: IntoIterator<Item = M>,
+        M: Into<String>,
+    {
+        self.allowed_mime_types = patterns.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Alias for [`SelectedField::with_allowed_mime_types`].
+    pub fn allowed_mime_types<I, M>(self, patterns: I) -> Self
+    where
+        I: IntoIterator<Item = M>,
+        M: Into<String>,
+    {
+        self.with_allowed_mime_types(patterns)
     }
 
     /// Validates a single selected field configuration.
@@ -36,6 +63,14 @@ impl SelectedField {
             return Err(ConfigError::InvalidFieldMaxCount {
                 name: self.name.clone(),
             });
+        }
+
+        for pattern in &self.allowed_mime_types {
+            if !is_valid_mime_pattern(pattern) {
+                return Err(ConfigError::InvalidMimePattern {
+                    pattern: pattern.clone(),
+                });
+            }
         }
 
         Ok(())

@@ -85,6 +85,15 @@ where
 
             match self.selector.evaluate_file_field(&headers.field_name) {
                 Ok(SelectorAction::Accept) => {
+                    if let Some(patterns) = self.selector.field_allowed_mime_types(&headers.field_name) {
+                        if !patterns.is_empty() && !mime_matches_any(&headers.content_type, patterns) {
+                            return Err(MulterError::MimeTypeNotAllowed {
+                                field: headers.field_name.clone(),
+                                mime: headers.content_type.essence_str().to_owned(),
+                            });
+                        }
+                    }
+
                     if !self.limits.is_mime_allowed(&headers.content_type) {
                         return Err(MulterError::MimeTypeNotAllowed {
                             field: headers.field_name.clone(),
@@ -121,5 +130,19 @@ where
     ) -> Poll<Result<Option<Bytes>, MulterError>> {
         self.poll_next_part_chunk(cx)
     }
+}
+
+fn mime_matches_any(mime: &mime::Mime, patterns: &[String]) -> bool {
+    patterns.iter().any(|pattern| mime_matches_pattern(mime, pattern))
+}
+
+fn mime_matches_pattern(mime: &mime::Mime, pattern: &str) -> bool {
+    if let Some((kind, subtype)) = pattern.split_once('/') {
+        if subtype == "*" {
+            return mime.type_().as_str().eq_ignore_ascii_case(kind);
+        }
+    }
+
+    mime.essence_str().eq_ignore_ascii_case(pattern)
 }
 

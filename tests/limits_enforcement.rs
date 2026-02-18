@@ -2,7 +2,9 @@
 
 use bytes::Bytes;
 use futures::{channel::mpsc, stream};
-use rust_multer::{Limits, MulterConfig, MulterError, Multipart, Selector, UnknownFieldPolicy};
+use rust_multer::{
+    Limits, MulterConfig, MulterError, Multipart, SelectedField, Selector, UnknownFieldPolicy,
+};
 
 #[tokio::test]
 async fn enforces_max_file_size() {
@@ -191,6 +193,70 @@ async fn fails_early_before_terminal_boundary_for_large_file_chunks() {
             field,
             max_file_size: 4
         } if field == "upload"
+    ));
+}
+
+#[tokio::test]
+async fn per_field_mime_rules_override_broader_global_allowlist() {
+    let config = MulterConfig {
+        selector: Selector::fields([
+            SelectedField::new("docs")
+                .max_count(1)
+                .allowed_mime_types(["application/pdf"]),
+        ]),
+        unknown_field_policy: UnknownFieldPolicy::Reject,
+        limits: Limits {
+            allowed_mime_types: vec!["application/*".to_owned()],
+            ..Limits::default()
+        },
+    };
+
+    let body = multipart_body(&[part(
+        "docs",
+        Some("a.json"),
+        Some("application/json"),
+        "{}",
+    )]);
+    let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
+        .expect("multipart should initialize");
+
+    let err = multipart.next_part().await.expect_err("item expected");
+    assert!(matches!(
+        err,
+        MulterError::MimeTypeNotAllowed { field, mime }
+        if field == "docs" && mime == "application/json"
+    ));
+}
+
+#[tokio::test]
+async fn global_mime_rules_still_apply_when_field_rule_allows() {
+    let config = MulterConfig {
+        selector: Selector::fields([
+            SelectedField::new("docs")
+                .max_count(1)
+                .allowed_mime_types(["application/pdf"]),
+        ]),
+        unknown_field_policy: UnknownFieldPolicy::Reject,
+        limits: Limits {
+            allowed_mime_types: vec!["image/*".to_owned()],
+            ..Limits::default()
+        },
+    };
+
+    let body = multipart_body(&[part(
+        "docs",
+        Some("a.pdf"),
+        Some("application/pdf"),
+        "pdf",
+    )]);
+    let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
+        .expect("multipart should initialize");
+
+    let err = multipart.next_part().await.expect_err("item expected");
+    assert!(matches!(
+        err,
+        MulterError::MimeTypeNotAllowed { field, mime }
+        if field == "docs" && mime == "application/pdf"
     ));
 }
 

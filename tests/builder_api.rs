@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use rust_multer::{
-    ConfigError, Limits, Multer, MulterBuilder, MulterConfig, Selector, UnknownFieldPolicy,
+    ConfigError, Field, Limits, Multer, MulterBuilder, MulterConfig, Selector, UnknownFieldPolicy,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,4 +64,67 @@ fn build_surfaces_config_errors() {
         result,
         Err(ConfigError::InvalidArrayMaxCount { .. })
     ));
+}
+
+#[test]
+fn fluent_limit_shortcuts_set_expected_values() {
+    let multer = Multer::builder()
+        .max_file_size(10)
+        .max_files(2)
+        .max_field_size(20)
+        .max_fields(3)
+        .max_body_size(100)
+        .allowed_mime_types(["image/*", "application/pdf"])
+        .build()
+        .expect("builder config should validate");
+
+    assert_eq!(multer.config().limits.max_file_size, Some(10));
+    assert_eq!(multer.config().limits.max_files, Some(2));
+    assert_eq!(multer.config().limits.max_field_size, Some(20));
+    assert_eq!(multer.config().limits.max_fields, Some(3));
+    assert_eq!(multer.config().limits.max_body_size, Some(100));
+    assert_eq!(
+        multer.config().limits.allowed_mime_types,
+        vec!["image/*".to_owned(), "application/pdf".to_owned()]
+    );
+}
+
+#[test]
+fn on_unknown_field_alias_matches_primary_api() {
+    let multer = Multer::builder()
+        .single("avatar")
+        .on_unknown_field(UnknownFieldPolicy::Reject)
+        .build()
+        .expect("builder config should validate");
+
+    assert_eq!(multer.config().unknown_field_policy, UnknownFieldPolicy::Reject);
+}
+
+#[test]
+fn fields_accept_prd_style_field_descriptors() {
+    let multer = Multer::builder()
+        .fields([
+            Field::new("avatar").max_count(1).allowed_mime_types(["image/*"]),
+            Field::new("docs")
+                .max_count(2)
+                .allowed_mime_types(["application/pdf"]),
+        ])
+        .build()
+        .expect("builder config should validate");
+
+    match &multer.config().selector {
+        Selector::Fields(fields) => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].name, "avatar");
+            assert_eq!(fields[0].max_count, Some(1));
+            assert_eq!(fields[0].allowed_mime_types, vec!["image/*".to_owned()]);
+            assert_eq!(fields[1].name, "docs");
+            assert_eq!(fields[1].max_count, Some(2));
+            assert_eq!(
+                fields[1].allowed_mime_types,
+                vec!["application/pdf".to_owned()]
+            );
+        }
+        other => panic!("expected fields selector, got {other:?}"),
+    }
 }

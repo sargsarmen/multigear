@@ -1,3 +1,5 @@
+use crate::config::SelectedField;
+
 /// Multipart field model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Field {
@@ -8,6 +10,13 @@ pub enum Field {
 }
 
 impl Field {
+    /// Creates a selector field descriptor.
+    ///
+    /// This is a convenience alias for [`SelectedField::new`].
+    pub fn new(name: impl Into<String>) -> SelectedField {
+        SelectedField::new(name)
+    }
+
     /// Creates a file field model for the provided name.
     pub fn file(name: impl Into<String>) -> Self {
         Self::File(FileField::new(name))

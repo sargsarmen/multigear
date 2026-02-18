@@ -19,7 +19,7 @@ pub struct SelectorEngine {
     selector: Selector,
     unknown_field_policy: UnknownFieldPolicy,
     counts: HashMap<String, usize>,
-    fields: HashMap<String, Option<usize>>,
+    fields: HashMap<String, FieldRules>,
 }
 
 impl SelectorEngine {
@@ -52,10 +52,10 @@ impl SelectorEngine {
                 Ok(SelectorAction::Accept)
             }
             Selector::Fields(_) => {
-                let Some(max_count) = self.fields.get(field_name).copied() else {
+                let Some(rules) = self.fields.get(field_name).cloned() else {
                     return self.handle_unknown_field(field_name);
                 };
-                self.record_with_limit(field_name, max_count)?;
+                self.record_with_limit(field_name, rules.max_count)?;
                 Ok(SelectorAction::Accept)
             }
             Selector::None => self.handle_unknown_field(field_name),
@@ -85,14 +85,38 @@ impl SelectorEngine {
         self.counts.insert(field_name.to_owned(), next);
         Ok(())
     }
+
+    /// Returns MIME patterns configured for a selected field, if present.
+    pub fn field_allowed_mime_types(&self, field_name: &str) -> Option<&[String]> {
+        self.fields
+            .get(field_name)
+            .map(|rules| rules.allowed_mime_types.as_slice())
+    }
 }
 
-fn build_fields_map(selector: &Selector) -> HashMap<String, Option<usize>> {
+#[derive(Debug, Clone)]
+struct FieldRules {
+    max_count: Option<usize>,
+    allowed_mime_types: Vec<String>,
+}
+
+fn build_fields_map(selector: &Selector) -> HashMap<String, FieldRules> {
     match selector {
         Selector::Fields(fields) => {
             let mut map = HashMap::with_capacity(fields.len());
-            for SelectedField { name, max_count } in fields {
-                map.insert(name.clone(), *max_count);
+            for SelectedField {
+                name,
+                max_count,
+                allowed_mime_types,
+            } in fields
+            {
+                map.insert(
+                    name.clone(),
+                    FieldRules {
+                        max_count: *max_count,
+                        allowed_mime_types: allowed_mime_types.clone(),
+                    },
+                );
             }
             map
         }

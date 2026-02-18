@@ -81,10 +81,10 @@ cargo test --test parser_boundary --test parser_headers
 
 ### Required Changes
 
-- [ ] Add fluent limit/mime methods directly on `MulterBuilder`.
-- [ ] Add builder method parity for unknown field behavior (`on_unknown_field` alias/primary API).
-- [ ] Reconcile `Field` model with selector/validation API used in PRD examples.
-- [ ] Add tests for all fluent methods and mixed per-field/global validation behavior.
+- [x] Add fluent limit/mime methods directly on `MulterBuilder`.
+- [x] Add builder method parity for unknown field behavior (`on_unknown_field` alias/primary API).
+- [x] Reconcile `Field` model with selector/validation API used in PRD examples.
+- [x] Add tests for all fluent methods and mixed per-field/global validation behavior.
 
 ### Exit Gate
 
@@ -215,7 +215,7 @@ cargo bench --bench upload_bench
 | 01 | Package/Feature/Release Baseline | DONE |
 | 02 | Streaming Parser and Memory-Safety | DONE |
 | 03 | RFC 7578 Edge Cases | DONE |
-| 04 | Builder API and Validation Model | TODO |
+| 04 | Builder API and Validation Model | DONE |
 | 05 | Storage Trait and Backend Extensibility | TODO |
 | 06 | Part/Multipart Public API Parity | TODO |
 | 07 | Framework Integrations | TODO |

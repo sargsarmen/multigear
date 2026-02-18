@@ -104,6 +104,19 @@ fn rejects_invalid_mime_pattern() {
 }
 
 #[test]
+fn rejects_invalid_selected_field_mime_pattern() {
+    let config = MulterConfig {
+        selector: Selector::fields([
+            SelectedField::new("avatar").allowed_mime_types(["image"]),
+        ]),
+        ..MulterConfig::default()
+    };
+
+    let result = config.validate();
+    assert!(matches!(result, Err(ConfigError::InvalidMimePattern { .. })));
+}
+
+#[test]
 fn builder_validation_surfaces_config_errors() {
     let config = MulterConfig {
         selector: Selector::single(""),
