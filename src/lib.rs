@@ -37,7 +37,7 @@ pub use limits::Limits;
 pub use multipart::Multipart;
 pub use part::Part;
 pub use selector::{SelectorAction, SelectorEngine};
-pub use storage::{NoopStorage, StorageEngine};
+pub use storage::{MemoryStorage, NoopStorage, StorageEngine, StoredFile};
 
 /// Main `rust-multer` entry point.
 #[derive(Debug)]
@@ -69,6 +69,16 @@ impl<S> Multer<S> {
     /// Returns an immutable reference to the configured storage backend.
     pub fn storage(&self) -> &S {
         &self.storage
+    }
+}
+
+impl<S> Multer<S>
+where
+    S: StorageEngine,
+{
+    /// Stores a file part through the configured storage backend.
+    pub async fn store(&self, part: Part) -> Result<StoredFile, MulterError> {
+        self.storage.store(part).await.map_err(MulterError::from)
     }
 }
 

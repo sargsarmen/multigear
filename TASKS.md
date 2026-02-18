@@ -414,7 +414,7 @@ Use this table to track completion:
 | 07 | DONE | `task-07-part-api` | - | YES |
 | 08 | DONE | `task-08-selector-engine` | - | YES |
 | 09 | DONE | `task-09-limits-validation` | - | YES |
-| 10 | TODO | `task-10-storage-memory` | - | No |
+| 10 | DONE | `task-10-storage-memory` | - | YES |
 | 11 | TODO | `task-11-storage-disk` | - | No |
 | 12 | TODO | `task-12-core-e2e-tests` | - | No |
 | 13 | TODO | `task-13-integrations-examples-ci` | - | No |
