@@ -118,6 +118,7 @@ where
         let field_name = part.field_name().to_owned();
         let file_name = part.file_name().map(ToOwned::to_owned);
         let content_type = part.content_type().to_string();
+        let size_hint = part.size_hint();
         let stream = part.stream()?;
 
         #[cfg(feature = "tracing")]
@@ -129,7 +130,13 @@ where
         );
 
         self.storage
-            .store(&field_name, file_name.as_deref(), &content_type, stream)
+            .store(
+                &field_name,
+                file_name.as_deref(),
+                &content_type,
+                size_hint,
+                stream,
+            )
             .await
             .map_err(|err| MulterError::Storage(StorageError::new(err.to_string())))
     }
@@ -224,7 +231,7 @@ where
         stream: T,
     ) -> Result<ProcessedMultipart<S::Output>, MulterError>
     where
-        T: Stream<Item = Result<Bytes, MulterError>> + Unpin,
+        T: Stream<Item = Result<Bytes, MulterError>> + Unpin + Send,
     {
         let mut multipart = self.multipart_from_boundary(boundary, stream)?;
         let mut out = ProcessedMultipart::default();

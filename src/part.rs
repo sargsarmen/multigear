@@ -10,7 +10,7 @@ use http::{HeaderMap, header};
 
 use crate::{BoxStream, MulterError, ParseError, parser::headers::ParsedPartHeaders};
 
-pub(crate) trait PartBodyReader {
+pub(crate) trait PartBodyReader: Send {
     fn poll_next_chunk(
         &mut self,
         cx: &mut Context<'_>,

@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use futures::{SinkExt, channel::mpsc, stream};
@@ -116,6 +117,47 @@ async fn disk_filter_can_reject_files_before_write() {
     let err = multer.store(part).await.expect_err("filter should reject file");
     assert!(err.to_string().contains("filter rejected"));
     assert!(!tokio::fs::try_exists(&root).await.expect("try_exists should succeed"));
+
+    cleanup(root).await;
+}
+
+#[tokio::test]
+async fn disk_filter_receives_size_hint_from_part_headers() {
+    let root = temp_root();
+    let observed_size_hint: Arc<Mutex<Option<Option<u64>>>> = Arc::new(Mutex::new(None));
+    let observed = Arc::clone(&observed_size_hint);
+
+    let storage = DiskStorage::builder()
+        .destination(&root)
+        .filename(FilenameStrategy::Keep)
+        .filter(move |meta| {
+            *observed.lock().expect("lock should succeed") = Some(meta.size_hint);
+            true
+        })
+        .build()
+        .expect("builder should succeed");
+    let multer = Multer::new(storage);
+
+    let body = concat!(
+        "--BOUND\r\n",
+        "Content-Disposition: form-data; name=\"upload\"; filename=\"hinted.txt\"\r\n",
+        "Content-Type: text/plain\r\n",
+        "Content-Length: 5\r\n",
+        "\r\n",
+        "hello\r\n",
+        "--BOUND--\r\n"
+    );
+    let mut multipart = Multipart::new("BOUND", bytes_stream(body.as_bytes().to_vec()))
+        .expect("multipart should initialize");
+    let part = multipart
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
+
+    let _stored = multer.store(part).await.expect("store should succeed");
+    let captured = *observed_size_hint.lock().expect("lock should succeed");
+    assert_eq!(captured, Some(Some(5)));
 
     cleanup(root).await;
 }

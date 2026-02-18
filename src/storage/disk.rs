@@ -160,7 +160,7 @@ impl DiskStorage {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl StorageEngine for DiskStorage {
     type Output = StoredFile;
     type Error = StorageError;
@@ -170,6 +170,7 @@ impl StorageEngine for DiskStorage {
         field_name: &str,
         file_name: Option<&str>,
         content_type: &str,
+        size_hint: Option<u64>,
         mut stream: BoxStream<'_, Result<Bytes, MulterError>>,
     ) -> Result<Self::Output, Self::Error> {
         #[cfg(feature = "tracing")]
@@ -185,7 +186,7 @@ impl StorageEngine for DiskStorage {
             field_name: field_name.to_owned(),
             file_name: file_name.map(ToOwned::to_owned),
             content_type: content_type.to_owned(),
-            size_hint: None,
+            size_hint,
         };
         if !self.should_store(&accepted_meta) {
             #[cfg(feature = "tracing")]

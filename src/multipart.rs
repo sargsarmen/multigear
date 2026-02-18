@@ -58,7 +58,7 @@ impl<S> Multipart<S> {
 
 impl<S> Multipart<S>
 where
-    S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
+    S: Stream<Item = Result<Bytes, MulterError>> + Unpin + Send,
 {
     /// Returns the next multipart part, if available.
     pub async fn next_part(&mut self) -> Result<Option<Part<'_>>, MulterError> {
@@ -183,7 +183,7 @@ where
 
 impl<S> PartBodyReader for MultipartStream<S>
 where
-    S: Stream<Item = Result<Bytes, MulterError>> + Unpin,
+    S: Stream<Item = Result<Bytes, MulterError>> + Unpin + Send,
 {
     fn poll_next_chunk(
         &mut self,

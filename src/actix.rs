@@ -9,18 +9,21 @@ use std::{
 use actix_web::{
     FromRequest,
     HttpRequest,
+    rt,
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     error::PayloadError,
     http::header,
     web::{self, Bytes},
 };
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, channel::mpsc};
 
 use crate::{Multer, MulterError, Multipart, ParseError, StorageEngine};
 
 /// Actix body stream mapped into `rust-multer` chunk errors.
-pub type ActixBodyStream<S> =
+pub type ActixMappedBodyStream<S> =
     futures::stream::Map<S, fn(Result<Bytes, PayloadError>) -> Result<Bytes, MulterError>>;
+/// Actix payload stream converted into a `Send` stream for multipart parsing.
+pub type ActixBodyStream = mpsc::UnboundedReceiver<Result<Bytes, MulterError>>;
 
 /// Extracts the raw `Content-Type` header from an Actix request.
 pub fn content_type_from_request(request: &HttpRequest) -> Result<&str, MulterError> {
@@ -34,11 +37,24 @@ pub fn content_type_from_request(request: &HttpRequest) -> Result<&str, MulterEr
 }
 
 /// Maps an Actix payload stream into the stream shape expected by `rust-multer`.
-pub fn map_payload_stream<S>(stream: S) -> ActixBodyStream<S>
+pub fn map_payload_stream<S>(stream: S) -> ActixMappedBodyStream<S>
 where
     S: Stream<Item = Result<Bytes, PayloadError>>,
 {
     stream.map(actix_item_to_multer)
+}
+
+fn payload_to_send_stream(payload: web::Payload) -> ActixBodyStream {
+    let (tx, rx) = mpsc::unbounded::<Result<Bytes, MulterError>>();
+    rt::spawn(async move {
+        let mut stream = map_payload_stream(payload);
+        while let Some(chunk) = stream.next().await {
+            if tx.unbounded_send(chunk).is_err() {
+                break;
+            }
+        }
+    });
+    rx
 }
 
 /// Creates a configured [`Multipart`] stream from an Actix request and payload stream.
@@ -46,12 +62,12 @@ pub fn multipart_from_request<S>(
     multer: &Multer<S>,
     request: &HttpRequest,
     payload: web::Payload,
-) -> Result<Multipart<ActixBodyStream<web::Payload>>, MulterError>
+) -> Result<Multipart<ActixBodyStream>, MulterError>
 where
     S: StorageEngine,
 {
     let content_type = content_type_from_request(request)?;
-    multer.multipart_from_content_type(content_type, map_payload_stream(payload))
+    multer.multipart_from_content_type(content_type, payload_to_send_stream(payload))
 }
 
 /// Helper that extracts multipart from an Actix request and payload.
@@ -59,7 +75,7 @@ pub fn extract_multipart<S>(
     multer: &Multer<S>,
     request: &HttpRequest,
     payload: web::Payload,
-) -> Result<Multipart<ActixBodyStream<web::Payload>>, MulterError>
+) -> Result<Multipart<ActixBodyStream>, MulterError>
 where
     S: StorageEngine,
 {
@@ -75,7 +91,7 @@ where
         &self,
         request: HttpRequest,
         payload: web::Payload,
-    ) -> Result<Multipart<ActixBodyStream<web::Payload>>, MulterError> {
+    ) -> Result<Multipart<ActixBodyStream>, MulterError> {
         multipart_from_request(self, &request, payload)
     }
 }

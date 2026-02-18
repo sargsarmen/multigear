@@ -36,7 +36,7 @@ impl MemoryStorage {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl StorageEngine for MemoryStorage {
     type Output = StoredFile;
     type Error = StorageError;
@@ -46,6 +46,7 @@ impl StorageEngine for MemoryStorage {
         field_name: &str,
         file_name: Option<&str>,
         content_type: &str,
+        _size_hint: Option<u64>,
         mut stream: BoxStream<'_, Result<Bytes, MulterError>>,
     ) -> Result<Self::Output, Self::Error> {
         #[cfg(feature = "tracing")]
