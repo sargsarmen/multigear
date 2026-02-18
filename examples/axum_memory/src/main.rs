@@ -35,4 +35,3 @@ fn main() {
         .route("/upload/avatar", post(upload))
         .with_state(multer);
 }
-

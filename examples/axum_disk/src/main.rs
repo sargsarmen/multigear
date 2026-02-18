@@ -38,7 +38,7 @@ fn main() {
             .expect("multer should build"),
     );
 
-    let _app: Router<()> = Router::new().route("/upload", post(upload)).with_state(multer);
+    let _app: Router<()> = Router::new()
+        .route("/upload", post(upload))
+        .with_state(multer);
 }
-
-

@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
-use futures::{StreamExt, channel::mpsc, stream};
-use multigear::{Multipart, MulterError, ParseError};
+use futures::{channel::mpsc, stream, StreamExt};
+use multigear::{MulterError, Multipart, ParseError};
 
 #[tokio::test]
 async fn parses_chunked_stream_and_yields_parts() {
@@ -30,7 +30,10 @@ async fn parses_chunked_stream_and_yields_parts() {
         .expect("first item should exist");
     assert_eq!(first.headers.field_name, "alpha");
     assert!(first.headers.file_name.is_none());
-    assert_eq!(first.bytes().await.expect("body bytes"), Bytes::from_static(b"one"));
+    assert_eq!(
+        first.bytes().await.expect("body bytes"),
+        Bytes::from_static(b"one")
+    );
 
     let mut second = multipart
         .next_part()
@@ -39,7 +42,10 @@ async fn parses_chunked_stream_and_yields_parts() {
         .expect("second item should exist");
     assert_eq!(second.headers.field_name, "beta");
     assert_eq!(second.headers.file_name.as_deref(), Some("b.txt"));
-    assert_eq!(second.bytes().await.expect("body bytes"), Bytes::from_static(b"two"));
+    assert_eq!(
+        second.bytes().await.expect("body bytes"),
+        Bytes::from_static(b"two")
+    );
 
     assert!(multipart
         .next_part()
@@ -73,7 +79,10 @@ async fn yields_first_part_before_input_completes() {
         .expect("first part should parse")
         .expect("first item should exist");
     assert_eq!(first.headers.field_name, "first");
-    assert_eq!(first.bytes().await.expect("body bytes"), Bytes::from_static(b"one"));
+    assert_eq!(
+        first.bytes().await.expect("body bytes"),
+        Bytes::from_static(b"one")
+    );
 
     tx.unbounded_send(Ok(Bytes::from_static(second_chunk.as_bytes())))
         .expect("send second chunk");
@@ -85,7 +94,10 @@ async fn yields_first_part_before_input_completes() {
         .expect("second part should parse")
         .expect("second item should exist");
     assert_eq!(second.headers.field_name, "second");
-    assert_eq!(second.bytes().await.expect("body bytes"), Bytes::from_static(b"two"));
+    assert_eq!(
+        second.bytes().await.expect("body bytes"),
+        Bytes::from_static(b"two")
+    );
     assert!(multipart
         .next_part()
         .await
@@ -102,7 +114,9 @@ async fn reports_malformed_boundary_as_parse_error() {
         "hello\r\n",
         "--WRONG--\r\n"
     );
-    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]);
+    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(
+        body.as_bytes(),
+    ))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
 
     let mut item = multipart
@@ -125,7 +139,9 @@ async fn reports_incomplete_terminal_boundary() {
         "\r\n",
         "hello"
     );
-    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]);
+    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(
+        body.as_bytes(),
+    ))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
 
     let mut item = multipart
@@ -146,7 +162,9 @@ async fn reports_invalid_headers_as_parse_error() {
         "hello\r\n",
         "--BOUND--\r\n"
     );
-    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]);
+    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(
+        body.as_bytes(),
+    ))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
 
     let item = multipart.next_part().await.expect_err("item expected");
@@ -215,5 +233,3 @@ async fn streams_large_body_before_terminal_boundary_arrives() {
 
     assert_eq!(total, 256 * 1024);
 }
-
-

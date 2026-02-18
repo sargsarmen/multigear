@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
-use futures::{StreamExt, stream};
+use futures::{stream, StreamExt};
 use multigear::{BoxStream, Multer, MulterError, StorageEngine, StorageError};
 use tokio::sync::RwLock;
 
@@ -58,11 +58,12 @@ async fn main() {
     let output = multer
         .parse_and_store(
             "BOUND",
-            stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]),
+            stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(
+                body.as_bytes(),
+            ))]),
         )
         .await
         .expect("pipeline should succeed");
 
     println!("stored files: {}", output.stored_files.len());
 }
-

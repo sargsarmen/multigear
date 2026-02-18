@@ -47,5 +47,3 @@ async fn main() {
     let response = service.call(request).await.expect("service should succeed");
     println!("hyper service status: {}", response.status());
 }
-
-

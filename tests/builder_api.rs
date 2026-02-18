@@ -98,14 +98,19 @@ fn on_unknown_field_alias_matches_primary_api() {
         .build()
         .expect("builder config should validate");
 
-    assert_eq!(multer.config().unknown_field_policy, UnknownFieldPolicy::Reject);
+    assert_eq!(
+        multer.config().unknown_field_policy,
+        UnknownFieldPolicy::Reject
+    );
 }
 
 #[test]
 fn fields_accept_prd_style_field_descriptors() {
     let multer = Multer::builder()
         .fields([
-            Field::new("avatar").max_count(1).allowed_mime_types(["image/*"]),
+            Field::new("avatar")
+                .max_count(1)
+                .allowed_mime_types(["image/*"]),
             Field::new("docs")
                 .max_count(2)
                 .allowed_mime_types(["application/pdf"]),
@@ -163,4 +168,3 @@ fn fields_support_file_and_text_models() {
         other => panic!("expected fields selector, got {other:?}"),
     }
 }
-

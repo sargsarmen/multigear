@@ -9,14 +9,14 @@ use std::time::Duration;
 use axum::{
     body::Body,
     extract::FromRequest,
-    http::{Request, header},
+    http::{header, Request},
 };
 #[cfg(feature = "axum")]
 use bytes::Bytes;
 #[cfg(feature = "axum")]
 use futures::channel::mpsc;
 #[cfg(feature = "axum")]
-use multigear::{MemoryStorage, Multer, axum::MulterExtractor};
+use multigear::{axum::MulterExtractor, MemoryStorage, Multer};
 
 #[cfg(feature = "axum")]
 #[tokio::test]
@@ -82,4 +82,3 @@ async fn multer_extractor_is_streaming_and_does_not_require_full_body() {
     assert_eq!(part.field_name(), "field");
     assert_eq!(part.text().await.expect("text body should decode"), "value");
 }
-

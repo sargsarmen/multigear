@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{
-    MulterError, SelectedField, SelectedFieldKind, Selector, UnknownFieldPolicy,
-};
+use crate::{MulterError, SelectedField, SelectedFieldKind, Selector, UnknownFieldPolicy};
 
 /// Runtime decision for a candidate incoming file part.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,7 +91,11 @@ impl SelectorEngine {
         }
     }
 
-    fn record_with_limit(&mut self, field_name: &str, max_count: Option<usize>) -> Result<(), MulterError> {
+    fn record_with_limit(
+        &mut self,
+        field_name: &str,
+        max_count: Option<usize>,
+    ) -> Result<(), MulterError> {
         let next = self.counts.get(field_name).copied().unwrap_or(0) + 1;
         if let Some(max_count) = max_count {
             if next > max_count {

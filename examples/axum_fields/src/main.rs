@@ -40,7 +40,9 @@ fn main() {
                 Field::file("thumbnail")
                     .max_count(1)
                     .allowed_mime_types(["image/jpeg", "image/png"]),
-                Field::file("gallery").max_count(8).allowed_mime_types(["image/*"]),
+                Field::file("gallery")
+                    .max_count(8)
+                    .allowed_mime_types(["image/*"]),
             ])
             .on_unknown_field(UnknownFieldPolicy::Reject)
             .max_file_size(15 * 1024 * 1024)
@@ -49,7 +51,7 @@ fn main() {
             .expect("multer should build"),
     );
 
-    let _app: Router<()> = Router::new().route("/products", post(upload)).with_state(multer);
+    let _app: Router<()> = Router::new()
+        .route("/products", post(upload))
+        .with_state(multer);
 }
-
-

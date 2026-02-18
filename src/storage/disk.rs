@@ -144,7 +144,9 @@ impl DiskStorage {
     }
 
     fn choose_output_name(&self, file_name: Option<&str>) -> String {
-        let input_name = file_name.map(ToOwned::to_owned).unwrap_or_else(random_basename);
+        let input_name = file_name
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(random_basename);
 
         let candidate = match &self.strategy {
             FilenameStrategy::Keep => input_name,
@@ -198,9 +200,9 @@ impl StorageEngine for DiskStorage {
             )));
         }
 
-        tokio::fs::create_dir_all(&self.root)
-            .await
-            .map_err(|err| StorageError::new(format!("failed to create storage directory: {err}")))?;
+        tokio::fs::create_dir_all(&self.root).await.map_err(|err| {
+            StorageError::new(format!("failed to create storage directory: {err}"))
+        })?;
 
         let file_basename = self.choose_output_name(file_name);
 
@@ -224,7 +226,8 @@ impl StorageEngine for DiskStorage {
         let mut written = 0u64;
 
         while let Some(chunk) = stream.next().await {
-            let bytes = chunk.map_err(|err| StorageError::new(format!("stream read failed: {err}")))?;
+            let bytes =
+                chunk.map_err(|err| StorageError::new(format!("stream read failed: {err}")))?;
             file.write_all(&bytes)
                 .await
                 .map_err(|err| StorageError::new(format!("failed to write output file: {err}")))?;
@@ -300,7 +303,3 @@ pub fn sanitize_filename(input: &str) -> String {
 
     sanitized
 }
-
-
-
-

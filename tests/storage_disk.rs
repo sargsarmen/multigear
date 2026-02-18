@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use futures::{SinkExt, channel::mpsc, stream};
-use multigear::{DiskStorage, FilenameStrategy, Multer, MulterError, Multipart};
+use futures::{channel::mpsc, stream, SinkExt};
 use multigear::storage::disk::sanitize_filename;
+use multigear::{DiskStorage, FilenameStrategy, Multer, MulterError, Multipart};
 use uuid::Uuid;
 
 type ObservedFileMeta = Option<(String, Option<String>, String)>;
@@ -25,10 +25,16 @@ async fn keep_strategy_sanitizes_filename_and_writes_to_disk() {
     let mut multipart =
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
     let part = multipart
-        .next_part().await.expect("part should parse").expect("part expected");
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
 
     let stored = multer.store(part).await.expect("store should succeed");
-    let path = stored.path.clone().expect("disk storage should return a path");
+    let path = stored
+        .path
+        .clone()
+        .expect("disk storage should return a path");
     assert!(path.starts_with(&root));
     assert_eq!(stored.size, 5);
     assert_eq!(tokio::fs::read(&path).await.expect("read file"), b"hello");
@@ -61,10 +67,16 @@ async fn random_strategy_generates_distinct_paths() {
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
 
     let first = multipart
-        .next_part().await.expect("first should parse").expect("first expected");
+        .next_part()
+        .await
+        .expect("first should parse")
+        .expect("first expected");
     let first_stored = multer.store(first).await.expect("first store");
     let second = multipart
-        .next_part().await.expect("second should parse").expect("second expected");
+        .next_part()
+        .await
+        .expect("second should parse")
+        .expect("second expected");
     let second_stored = multer.store(second).await.expect("second store");
     assert_ne!(first_stored.path, second_stored.path);
 
@@ -85,7 +97,10 @@ async fn custom_strategy_applies_transform() {
     let mut multipart =
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
     let part = multipart
-        .next_part().await.expect("part should parse").expect("part expected");
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
 
     let stored = multer.store(part).await.expect("store should succeed");
     let file_name = stored
@@ -114,11 +129,19 @@ async fn disk_filter_can_reject_files_before_write() {
     let mut multipart =
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
     let part = multipart
-        .next_part().await.expect("part should parse").expect("part expected");
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
 
-    let err = multer.store(part).await.expect_err("filter should reject file");
+    let err = multer
+        .store(part)
+        .await
+        .expect_err("filter should reject file");
     assert!(err.to_string().contains("filter rejected"));
-    assert!(!tokio::fs::try_exists(&root).await.expect("try_exists should succeed"));
+    assert!(!tokio::fs::try_exists(&root)
+        .await
+        .expect("try_exists should succeed"));
 
     cleanup(root).await;
 }
@@ -200,8 +223,9 @@ fn multipart_body(parts: &[(&str, &str, &str, &str)]) -> Vec<u8> {
     let mut out = Vec::new();
     for (field, file_name, content_type, body) in parts {
         out.extend_from_slice(b"--BOUND\r\n");
-        let disposition =
-            format!("Content-Disposition: form-data; name=\"{field}\"; filename=\"{file_name}\"\r\n");
+        let disposition = format!(
+            "Content-Disposition: form-data; name=\"{field}\"; filename=\"{file_name}\"\r\n"
+        );
         out.extend_from_slice(disposition.as_bytes());
         let content_type = format!("Content-Type: {content_type}\r\n\r\n");
         out.extend_from_slice(content_type.as_bytes());
@@ -250,7 +274,9 @@ async fn streams_large_file_to_disk_from_chunked_input() {
     assert_eq!(stored.size, 128 * 64 * 1024);
 
     let path = stored.path.expect("disk path should be present");
-    let metadata = tokio::fs::metadata(path).await.expect("metadata should exist");
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .expect("metadata should exist");
     assert_eq!(metadata.len(), 128 * 64 * 1024);
 
     cleanup(root).await;
@@ -272,7 +298,7 @@ async fn stress_multi_gb_disk_upload_uses_bounded_stream_memory() {
 
     let chunk_count: usize = match std::env::var("RUST_MULTER_STRESS_4GB") {
         Ok(value) if value == "1" => 65_536, // 4 GiB at 64 KiB/chunk
-        _ => 4_096,                           // 256 MiB default stress size
+        _ => 4_096,                          // 256 MiB default stress size
     };
     let expected_size = (chunk_count as u64) * (CHUNK_SIZE as u64);
 
@@ -307,12 +333,10 @@ async fn stress_multi_gb_disk_upload_uses_bounded_stream_memory() {
 
     assert_eq!(stored.size, expected_size);
     let path = stored.path.expect("disk path should be present");
-    let metadata = tokio::fs::metadata(path).await.expect("metadata should exist");
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .expect("metadata should exist");
     assert_eq!(metadata.len(), expected_size);
 
     cleanup(root).await;
 }
-
-
-
-

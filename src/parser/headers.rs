@@ -1,4 +1,4 @@
-use http::{HeaderMap, header};
+use http::{header, HeaderMap};
 
 use crate::error::ParseError;
 

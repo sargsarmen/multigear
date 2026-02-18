@@ -103,4 +103,3 @@ async fn multer_service_rejects_requests_without_content_type() {
         .expect_err("service should fail");
     assert!(err.to_string().contains("missing Content-Type"));
 }
-

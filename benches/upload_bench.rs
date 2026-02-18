@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use futures::stream;
 use multigear::{MemoryStorage, Multer, MulterError};
 
@@ -39,4 +39,3 @@ fn build_body(size: usize) -> Vec<u8> {
 
 criterion_group!(benches, benchmark_upload_parse);
 criterion_main!(benches);
-

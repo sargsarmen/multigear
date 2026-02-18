@@ -12,7 +12,12 @@ async fn enforces_max_file_size() {
         max_file_size: Some(3),
         ..Limits::default()
     });
-    let body = multipart_body(&[part("upload", Some("a.bin"), Some("application/octet-stream"), "hello")]);
+    let body = multipart_body(&[part(
+        "upload",
+        Some("a.bin"),
+        Some("application/octet-stream"),
+        "hello",
+    )]);
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
@@ -76,7 +81,10 @@ async fn enforces_max_files() {
         .expect("first file should pass");
     assert_eq!(first.field_name(), "a");
 
-    let second = multipart.next_part().await.expect_err("second item expected");
+    let second = multipart
+        .next_part()
+        .await
+        .expect_err("second item expected");
     assert!(matches!(
         second,
         MulterError::FilesLimitExceeded { max_files: 1 }
@@ -103,7 +111,10 @@ async fn enforces_max_fields() {
         .expect("first field should pass");
     assert_eq!(first.field_name(), "first");
 
-    let second = multipart.next_part().await.expect_err("second item expected");
+    let second = multipart
+        .next_part()
+        .await
+        .expect_err("second item expected");
     assert!(matches!(
         second,
         MulterError::FieldsLimitExceeded { max_fields: 1 }
@@ -152,7 +163,10 @@ async fn enforces_allowed_mime_types_with_wildcard() {
         .expect("image file should pass");
     assert_eq!(first.field_name(), "avatar");
 
-    let second = multipart.next_part().await.expect_err("second item expected");
+    let second = multipart
+        .next_part()
+        .await
+        .expect_err("second item expected");
     assert!(matches!(
         second,
         MulterError::MimeTypeNotAllowed { field, mime }
@@ -199,11 +213,9 @@ async fn fails_early_before_terminal_boundary_for_large_file_chunks() {
 #[tokio::test]
 async fn per_field_mime_rules_override_broader_global_allowlist() {
     let config = MulterConfig {
-        selector: Selector::fields([
-            SelectedField::new("docs")
-                .max_count(1)
-                .allowed_mime_types(["application/pdf"]),
-        ]),
+        selector: Selector::fields([SelectedField::new("docs")
+            .max_count(1)
+            .allowed_mime_types(["application/pdf"])]),
         unknown_field_policy: UnknownFieldPolicy::Reject,
         limits: Limits {
             allowed_mime_types: vec!["application/*".to_owned()],
@@ -211,12 +223,7 @@ async fn per_field_mime_rules_override_broader_global_allowlist() {
         },
     };
 
-    let body = multipart_body(&[part(
-        "docs",
-        Some("a.json"),
-        Some("application/json"),
-        "{}",
-    )]);
+    let body = multipart_body(&[part("docs", Some("a.json"), Some("application/json"), "{}")]);
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
@@ -231,11 +238,9 @@ async fn per_field_mime_rules_override_broader_global_allowlist() {
 #[tokio::test]
 async fn global_mime_rules_still_apply_when_field_rule_allows() {
     let config = MulterConfig {
-        selector: Selector::fields([
-            SelectedField::new("docs")
-                .max_count(1)
-                .allowed_mime_types(["application/pdf"]),
-        ]),
+        selector: Selector::fields([SelectedField::new("docs")
+            .max_count(1)
+            .allowed_mime_types(["application/pdf"])]),
         unknown_field_policy: UnknownFieldPolicy::Reject,
         limits: Limits {
             allowed_mime_types: vec!["image/*".to_owned()],
@@ -243,12 +248,7 @@ async fn global_mime_rules_still_apply_when_field_rule_allows() {
         },
     };
 
-    let body = multipart_body(&[part(
-        "docs",
-        Some("a.pdf"),
-        Some("application/pdf"),
-        "pdf",
-    )]);
+    let body = multipart_body(&[part("docs", Some("a.pdf"), Some("application/pdf"), "pdf")]);
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
@@ -276,7 +276,10 @@ async fn enforces_per_field_text_size_limit() {
         .await
         .expect("headers should parse")
         .expect("item expected");
-    let err = part.text().await.expect_err("text field should fail per-field size limit");
+    let err = part
+        .text()
+        .await
+        .expect_err("text field should fail per-field size limit");
     assert!(matches!(
         err,
         MulterError::FieldSizeLimitExceeded {
@@ -297,7 +300,10 @@ async fn fields_selector_rejects_unknown_text_fields() {
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
-    let err = multipart.next_part().await.expect_err("unknown text field should fail");
+    let err = multipart
+        .next_part()
+        .await
+        .expect_err("unknown text field should fail");
     assert!(matches!(
         err,
         MulterError::UnexpectedField { field } if field == "other"
@@ -338,7 +344,8 @@ fn multipart_body(parts: &[(&str, Option<&str>, Option<&str>, &str)]) -> Vec<u8>
                 out.extend_from_slice(b"\r\n");
             }
             None => {
-                let disposition = format!("Content-Disposition: form-data; name=\"{field}\"\r\n\r\n");
+                let disposition =
+                    format!("Content-Disposition: form-data; name=\"{field}\"\r\n\r\n");
                 out.extend_from_slice(disposition.as_bytes());
             }
         }
@@ -352,5 +359,3 @@ fn multipart_body(parts: &[(&str, Option<&str>, Option<&str>, &str)]) -> Vec<u8>
 fn bytes_stream(body: Vec<u8>) -> impl futures::Stream<Item = Result<Bytes, MulterError>> {
     stream::iter([Ok(Bytes::from(body))])
 }
-
-

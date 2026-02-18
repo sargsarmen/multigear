@@ -29,7 +29,9 @@ fn validate_boundary(boundary: &str) -> Result<(), ParseError> {
     }
 
     if boundary.len() > MAX_BOUNDARY_LEN {
-        return Err(ParseError::new("multipart boundary cannot exceed 70 characters"));
+        return Err(ParseError::new(
+            "multipart boundary cannot exceed 70 characters",
+        ));
     }
 
     if boundary.ends_with(' ') {
@@ -59,7 +61,9 @@ fn decode_boundary_percent_encoding(boundary: &str) -> Result<String, ParseError
     while index < raw.len() {
         if raw[index] == b'%' {
             if index + 2 >= raw.len() {
-                return Err(ParseError::new("invalid percent-encoding in multipart boundary"));
+                return Err(ParseError::new(
+                    "invalid percent-encoding in multipart boundary",
+                ));
             }
 
             let hi = hex_value(raw[index + 1])?;
@@ -82,10 +86,16 @@ fn hex_value(byte: u8) -> Result<u8, ParseError> {
         b'0'..=b'9' => Ok(byte - b'0'),
         b'a'..=b'f' => Ok(byte - b'a' + 10),
         b'A'..=b'F' => Ok(byte - b'A' + 10),
-        _ => Err(ParseError::new("invalid percent-encoding in multipart boundary")),
+        _ => Err(ParseError::new(
+            "invalid percent-encoding in multipart boundary",
+        )),
     }
 }
 
 fn is_boundary_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, '\'' | '(' | ')' | '+' | '_' | ',' | '-' | '.' | '/' | ':' | '=' | '?' | ' ')
+    c.is_ascii_alphanumeric()
+        || matches!(
+            c,
+            '\'' | '(' | ')' | '+' | '_' | ',' | '-' | '.' | '/' | ':' | '=' | '?' | ' '
+        )
 }

@@ -1,14 +1,13 @@
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
-use futures::{Stream, future::poll_fn};
+use futures::{future::poll_fn, Stream};
 
 use crate::{
-    Limits, MulterConfig, MulterError, ParseError, Selector, UnknownFieldPolicy,
-    Part,
     parser::stream::{MultipartStream, StreamLimits},
     part::PartBodyReader,
     selector::{SelectorAction, SelectorEngine},
+    Limits, MulterConfig, MulterError, ParseError, Part, Selector, UnknownFieldPolicy,
 };
 
 /// High-level multipart stream abstraction.
@@ -116,8 +115,12 @@ where
 
             match self.selector.evaluate_file_field(&headers.field_name) {
                 Ok(SelectorAction::Accept) => {
-                    if let Some(patterns) = self.selector.field_allowed_mime_types(&headers.field_name) {
-                        if !patterns.is_empty() && !mime_matches_any(&headers.content_type, patterns) {
+                    if let Some(patterns) =
+                        self.selector.field_allowed_mime_types(&headers.field_name)
+                    {
+                        if !patterns.is_empty()
+                            && !mime_matches_any(&headers.content_type, patterns)
+                        {
                             #[cfg(feature = "tracing")]
                             tracing::warn!(
                                 field_name = headers.field_name.as_str(),
@@ -194,7 +197,9 @@ where
 }
 
 fn mime_matches_any(mime: &mime::Mime, patterns: &[String]) -> bool {
-    patterns.iter().any(|pattern| mime_matches_pattern(mime, pattern))
+    patterns
+        .iter()
+        .any(|pattern| mime_matches_pattern(mime, pattern))
 }
 
 fn mime_matches_pattern(mime: &mime::Mime, pattern: &str) -> bool {
@@ -206,4 +211,3 @@ fn mime_matches_pattern(mime: &mime::Mime, pattern: &str) -> bool {
 
     mime.essence_str().eq_ignore_ascii_case(pattern)
 }
-

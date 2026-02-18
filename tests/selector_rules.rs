@@ -28,7 +28,10 @@ async fn single_selector_rejects_second_file_for_same_field() {
         .expect("first item should pass selector");
     assert_eq!(first.field_name(), "avatar");
 
-    let second = multipart.next_part().await.expect_err("second item expected");
+    let second = multipart
+        .next_part()
+        .await
+        .expect_err("second item expected");
     assert!(matches!(
         second,
         MulterError::FieldCountLimitExceeded {
@@ -147,16 +150,16 @@ async fn any_selector_accepts_all_file_fields() {
         unknown_field_policy: UnknownFieldPolicy::Reject,
         ..MulterConfig::default()
     };
-    let body = multipart_body(&[
-        ("a", Some("a.bin"), "one"),
-        ("b", Some("b.bin"), "two"),
-    ]);
+    let body = multipart_body(&[("a", Some("a.bin"), "one"), ("b", Some("b.bin"), "two")]);
     let mut multipart = Multipart::with_config("BOUND", bytes_stream(body), config)
         .expect("multipart should initialize");
 
     let mut names = Vec::new();
     loop {
-        let next = multipart.next_part().await.expect("all parts should be accepted");
+        let next = multipart
+            .next_part()
+            .await
+            .expect("all parts should be accepted");
         let Some(part) = next else {
             break;
         };
@@ -179,7 +182,8 @@ fn multipart_body(parts: &[(&str, Option<&str>, &str)]) -> Vec<u8> {
                 out.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
             }
             None => {
-                let disposition = format!("Content-Disposition: form-data; name=\"{field}\"\r\n\r\n");
+                let disposition =
+                    format!("Content-Disposition: form-data; name=\"{field}\"\r\n\r\n");
                 out.extend_from_slice(disposition.as_bytes());
             }
         }
@@ -193,5 +197,3 @@ fn multipart_body(parts: &[(&str, Option<&str>, &str)]) -> Vec<u8> {
 fn bytes_stream(body: Vec<u8>) -> impl futures::Stream<Item = Result<Bytes, MulterError>> {
     stream::iter([Ok(Bytes::from(body))])
 }
-
-

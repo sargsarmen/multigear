@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use http::{HeaderMap, HeaderValue, header};
+use http::{header, HeaderMap, HeaderValue};
 use multigear::parser::headers::{
     parse_content_disposition, parse_part_content_type, parse_part_headers,
 };
@@ -27,8 +27,9 @@ fn parses_escaped_quoted_values() {
 
 #[test]
 fn parses_percent_encoded_filename_parameter() {
-    let parsed = parse_content_disposition("form-data; name=\"file\"; filename=\"hello%20world.txt\"")
-        .expect("header should parse");
+    let parsed =
+        parse_content_disposition("form-data; name=\"file\"; filename=\"hello%20world.txt\"")
+            .expect("header should parse");
     assert_eq!(parsed.filename.as_deref(), Some("hello world.txt"));
 }
 
@@ -53,10 +54,7 @@ fn parses_explicit_part_content_type() {
     let mime = parse_part_content_type(Some("text/plain; charset=utf-8"))
         .expect("explicit MIME should parse");
     assert_eq!(mime.essence_str(), "text/plain");
-    assert_eq!(
-        mime.get_param("charset").map(|v| v.as_str()),
-        Some("utf-8")
-    );
+    assert_eq!(mime.get_param("charset").map(|v| v.as_str()), Some("utf-8"));
 }
 
 #[test]
@@ -66,10 +64,7 @@ fn parse_part_headers_extracts_core_values() {
         header::CONTENT_DISPOSITION,
         HeaderValue::from_static("form-data; name=\"avatar\"; filename=\"face.png\""),
     );
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("image/png"),
-    );
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
 
     let parsed = parse_part_headers(&headers).expect("part headers should parse");
     assert_eq!(parsed.field_name, "avatar");
@@ -115,4 +110,3 @@ fn assert_err_contains(actual: &str, expected_fragment: &str) {
         "expected `{actual}` to contain `{expected_fragment}`"
     );
 }
-

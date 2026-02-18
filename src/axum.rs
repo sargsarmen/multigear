@@ -1,12 +1,12 @@
 //! Axum integration helpers.
 
 use axum::{
-    extract::FromRequest,
     body::Bytes,
-    http::{HeaderMap, StatusCode, header},
+    extract::FromRequest,
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use futures::{Stream, StreamExt, stream};
+use futures::{stream, Stream, StreamExt};
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -74,7 +74,9 @@ pub struct MulterExtractor(pub AxumMultipart);
 
 impl std::fmt::Debug for MulterExtractor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("MulterExtractor").field(&"<multipart>").finish()
+        f.debug_tuple("MulterExtractor")
+            .field(&"<multipart>")
+            .finish()
     }
 }
 
@@ -90,7 +92,8 @@ where
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let (parts, body) = request.into_parts();
-        let content_type = content_type_from_headers(&parts.headers).map_err(AxumMulterRejection)?;
+        let content_type =
+            content_type_from_headers(&parts.headers).map_err(AxumMulterRejection)?;
         let body_stream = map_body_stream(body.into_data_stream());
         let body_stream = Box::pin(body_stream) as AxumBodyBoxStream;
 
@@ -137,4 +140,3 @@ where
 fn axum_item_to_multer(item: Result<Bytes, axum::Error>) -> Result<Bytes, MulterError> {
     item.map_err(|err| ParseError::new(format!("axum body stream error: {err}")).into())
 }
-

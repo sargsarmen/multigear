@@ -5,16 +5,14 @@ use std::{
 };
 
 use bytes::Bytes;
-use futures::{Stream, StreamExt, stream};
-use http::{HeaderMap, header};
+use futures::{stream, Stream, StreamExt};
+use http::{header, HeaderMap};
 
-use crate::{BoxStream, MulterError, ParseError, parser::headers::ParsedPartHeaders};
+use crate::{parser::headers::ParsedPartHeaders, BoxStream, MulterError, ParseError};
 
 pub(crate) trait PartBodyReader: Send {
-    fn poll_next_chunk(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Option<Bytes>, MulterError>>;
+    fn poll_next_chunk(&mut self, cx: &mut Context<'_>)
+        -> Poll<Result<Option<Bytes>, MulterError>>;
 }
 
 /// Parsed multipart part.
@@ -35,10 +33,7 @@ impl fmt::Debug for Part<'_> {
 
 impl<'a> Part<'a> {
     /// Creates a high-level part from parsed headers and a body reader.
-    pub(crate) fn new(
-        headers: ParsedPartHeaders,
-        body_reader: &'a mut dyn PartBodyReader,
-    ) -> Self {
+    pub(crate) fn new(headers: ParsedPartHeaders, body_reader: &'a mut dyn PartBodyReader) -> Self {
         Self {
             headers,
             body_reader: Some(body_reader),
@@ -156,4 +151,3 @@ impl Stream for PartBodyStream<'_> {
         }
     }
 }
-

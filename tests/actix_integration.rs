@@ -1,9 +1,9 @@
 #![allow(missing_docs)]
 
 #[cfg(feature = "actix")]
-use actix_web::{FromRequest, http::header, test, web};
+use actix_web::{http::header, test, web, FromRequest};
 #[cfg(feature = "actix")]
-use multigear::{MemoryStorage, Multer, actix::MulterMiddleware};
+use multigear::{actix::MulterMiddleware, MemoryStorage, Multer};
 
 #[cfg(feature = "actix")]
 #[actix_web::test]
@@ -44,4 +44,3 @@ async fn parse_method_parses_actix_request_payload() {
 async fn middleware_type_is_constructible() {
     let _middleware = MulterMiddleware;
 }
-

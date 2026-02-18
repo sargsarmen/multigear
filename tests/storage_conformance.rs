@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
-use futures::{StreamExt, stream};
+use futures::{stream, StreamExt};
 use multigear::{BoxStream, Multer, MulterError, Multipart, StorageEngine, StorageError};
 use tokio::sync::RwLock;
 
@@ -68,12 +68,17 @@ async fn custom_storage_backend_conforms_to_store_contract() {
     );
     let mut multipart = Multipart::new(
         "BOUND",
-        stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]),
+        stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(
+            body.as_bytes(),
+        ))]),
     )
     .expect("multipart should initialize");
 
     let part = multipart
-        .next_part().await.expect("part should parse").expect("part expected");
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
     let stored = multer.store(part).await.expect("store should succeed");
 
     assert_eq!(stored.field_name, "doc");
@@ -103,15 +108,16 @@ async fn custom_storage_works_with_parse_and_store_pipeline() {
     let output = multer
         .parse_and_store(
             "BOUND",
-            stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]),
+            stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(
+                body.as_bytes(),
+            ))]),
         )
         .await
         .expect("pipeline should succeed");
 
     assert_eq!(output.stored_files.len(), 1);
-    assert_eq!(output.text_fields, vec![("note".to_owned(), "two".to_owned())]);
+    assert_eq!(
+        output.text_fields,
+        vec![("note".to_owned(), "two".to_owned())]
+    );
 }
-
-
-
-

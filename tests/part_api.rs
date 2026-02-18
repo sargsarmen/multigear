@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use bytes::Bytes;
-use futures::{TryStreamExt, stream};
-use multigear::{Multipart, MulterError, ParseError};
+use futures::{stream, TryStreamExt};
+use multigear::{MulterError, Multipart, ParseError};
 
 #[tokio::test]
 async fn exposes_metadata_accessors() {
@@ -16,7 +16,9 @@ async fn exposes_metadata_accessors() {
         "--BOUND--\r\n"
     );
 
-    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(body.as_bytes()))]);
+    let input = stream::iter([Ok::<Bytes, MulterError>(Bytes::from_static(
+        body.as_bytes(),
+    ))]);
     let mut multipart = Multipart::new("BOUND", input).expect("boundary should be valid");
     let part = multipart
         .next_part()
@@ -74,7 +76,10 @@ async fn stream_is_single_pass_and_returns_body() {
         .expect("part should parse");
 
     let stream = part.stream();
-    let chunks = stream.try_collect::<Vec<_>>().await.expect("stream should read");
+    let chunks = stream
+        .try_collect::<Vec<_>>()
+        .await
+        .expect("stream should read");
     assert_eq!(chunks, vec![Bytes::from_static(b"stream-body")]);
 
     let err = part.text().await.expect_err("second read must fail");
@@ -117,5 +122,3 @@ fn assert_already_consumed(err: MulterError) {
         "unexpected error: {err}"
     );
 }
-
-

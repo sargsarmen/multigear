@@ -176,4 +176,3 @@ async fn parse_and_store_respects_unknown_field_policy_regression() {
         Err(MulterError::UnexpectedField { field }) if field == "other"
     ));
 }
-

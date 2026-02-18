@@ -84,4 +84,3 @@ impl StorageEngine for NoopStorage {
         ))
     }
 }
-

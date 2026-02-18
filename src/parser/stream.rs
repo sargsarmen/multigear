@@ -1,15 +1,15 @@
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
-use futures::{Stream, future::poll_fn};
+use futures::{future::poll_fn, Stream};
 use http::{
-    HeaderMap, HeaderName, HeaderValue,
     header::{self},
+    HeaderMap, HeaderName, HeaderValue,
 };
 
 use crate::{
+    parser::headers::{parse_part_headers, ParsedPartHeaders},
     MulterError, ParseError,
-    parser::headers::{ParsedPartHeaders, parse_part_headers},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,7 +118,9 @@ impl<S> MultipartStream<S> {
                     let Some(line) = take_line(&mut self.buffer) else {
                         if self.upstream_done {
                             self.state = ParseState::Failed;
-                            return Poll::Ready(Err(ParseError::new("missing opening boundary").into()));
+                            return Poll::Ready(Err(
+                                ParseError::new("missing opening boundary").into()
+                            ));
                         }
 
                         match self.poll_fill_buffer(cx)? {
@@ -162,7 +164,9 @@ impl<S> MultipartStream<S> {
                     let raw = self.buffer[..split].to_vec();
                     self.buffer.drain(..split + 4);
 
-                    let headers = match parse_header_block(&raw).and_then(|h| parse_part_headers(&h)) {
+                    let headers = match parse_header_block(&raw)
+                        .and_then(|h| parse_part_headers(&h))
+                    {
                         Ok(headers) => headers,
                         Err(err) => {
                             #[cfg(feature = "tracing")]
@@ -236,7 +240,9 @@ impl<S> MultipartStream<S> {
                     (suffix_start + 2, true)
                 } else {
                     self.state = ParseState::Failed;
-                    return Poll::Ready(Err(ParseError::new("malformed multipart boundary").into()));
+                    return Poll::Ready(
+                        Err(ParseError::new("malformed multipart boundary").into()),
+                    );
                 };
 
                 if let Err(err) = self.ensure_part_limit(split as u64) {
@@ -406,7 +412,8 @@ impl<S> MultipartStream<S> {
 }
 
 fn parse_header_block(raw: &[u8]) -> Result<HeaderMap, ParseError> {
-    let text = std::str::from_utf8(raw).map_err(|_| ParseError::new("part headers must be UTF-8"))?;
+    let text =
+        std::str::from_utf8(raw).map_err(|_| ParseError::new("part headers must be UTF-8"))?;
     let mut headers = HeaderMap::new();
 
     for line in text.split("\r\n") {
@@ -446,10 +453,16 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         return Some(0);
     }
 
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
-fn has_malformed_boundary_line(buffer: &[u8], boundary_line: &[u8], boundary_end_line: &[u8]) -> bool {
+fn has_malformed_boundary_line(
+    buffer: &[u8],
+    boundary_line: &[u8],
+    boundary_end_line: &[u8],
+) -> bool {
     let Some(prefix) = find_subslice(buffer, b"\r\n--") else {
         return false;
     };
@@ -473,4 +486,3 @@ fn validate_boundary_input(boundary: &str) -> Result<(), ParseError> {
 
     Ok(())
 }
-

@@ -13,7 +13,10 @@ async fn stores_file_part_and_returns_metadata() {
     let mut multipart =
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
     let part = multipart
-        .next_part().await.expect("part should parse").expect("part expected");
+        .next_part()
+        .await
+        .expect("part should parse")
+        .expect("part expected");
 
     let stored = multer.store(part).await.expect("store should succeed");
     assert_eq!(stored.field_name, "avatar");
@@ -41,11 +44,23 @@ async fn memory_storage_conformance_unique_keys_and_payload_integrity() {
         Multipart::new("BOUND", bytes_stream(body)).expect("multipart should initialize");
 
     let first = multipart
-        .next_part().await.expect("first part should parse").expect("first part expected");
-    let first_meta = multer.store(first).await.expect("first store should succeed");
+        .next_part()
+        .await
+        .expect("first part should parse")
+        .expect("first part expected");
+    let first_meta = multer
+        .store(first)
+        .await
+        .expect("first store should succeed");
     let second = multipart
-        .next_part().await.expect("second part should parse").expect("second part expected");
-    let second_meta = multer.store(second).await.expect("second store should succeed");
+        .next_part()
+        .await
+        .expect("second part should parse")
+        .expect("second part expected");
+    let second_meta = multer
+        .store(second)
+        .await
+        .expect("second store should succeed");
 
     assert_ne!(first_meta.storage_key, second_meta.storage_key);
     assert_eq!(storage.len().await, 2);
@@ -63,8 +78,9 @@ fn multipart_body(parts: &[(&str, &str, &str, &str)]) -> Vec<u8> {
     let mut out = Vec::new();
     for (field, file_name, content_type, body) in parts {
         out.extend_from_slice(b"--BOUND\r\n");
-        let disposition =
-            format!("Content-Disposition: form-data; name=\"{field}\"; filename=\"{file_name}\"\r\n");
+        let disposition = format!(
+            "Content-Disposition: form-data; name=\"{field}\"; filename=\"{file_name}\"\r\n"
+        );
         out.extend_from_slice(disposition.as_bytes());
         let content_type = format!("Content-Type: {content_type}\r\n\r\n");
         out.extend_from_slice(content_type.as_bytes());
@@ -78,6 +94,3 @@ fn multipart_body(parts: &[(&str, &str, &str, &str)]) -> Vec<u8> {
 fn bytes_stream(body: Vec<u8>) -> impl futures::Stream<Item = Result<Bytes, MulterError>> {
     stream::iter([Ok(Bytes::from(body))])
 }
-
-
-

@@ -1,21 +1,20 @@
 //! Actix integration helpers.
 
 use std::{
-    future::{Future, Ready, ready},
+    future::{ready, Future, Ready},
     pin::Pin,
     task::{Context, Poll},
 };
 
 use actix_web::{
-    FromRequest,
-    HttpRequest,
-    rt,
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     error::PayloadError,
     http::header,
+    rt,
     web::{self, Bytes},
+    FromRequest, HttpRequest,
 };
-use futures::{Stream, StreamExt, channel::mpsc};
+use futures::{channel::mpsc, Stream, StreamExt};
 
 use crate::{Multer, MulterError, Multipart, ParseError, StorageEngine};
 
@@ -179,4 +178,3 @@ where
 fn actix_item_to_multer(item: Result<Bytes, PayloadError>) -> Result<Bytes, MulterError> {
     item.map_err(|err| ParseError::new(format!("actix body stream error: {err}")).into())
 }
-

@@ -30,8 +30,8 @@ fn rejects_missing_boundary_parameter() {
 
 #[test]
 fn rejects_invalid_boundary_characters() {
-    let err = extract_multipart_boundary("multipart/form-data; boundary=abc@123")
-        .expect_err("must fail");
+    let err =
+        extract_multipart_boundary("multipart/form-data; boundary=abc@123").expect_err("must fail");
     assert_err_contains(&err.to_string(), "invalid");
 }
 
@@ -52,8 +52,8 @@ fn decodes_percent_encoded_boundary() {
 
 #[test]
 fn rejects_malformed_percent_encoding_in_boundary() {
-    let err = extract_multipart_boundary("multipart/form-data; boundary=abc%2")
-        .expect_err("must fail");
+    let err =
+        extract_multipart_boundary("multipart/form-data; boundary=abc%2").expect_err("must fail");
     assert_err_contains(&err.to_string(), "percent-encoding");
 }
 
@@ -63,4 +63,3 @@ fn assert_err_contains(actual: &str, expected_fragment: &str) {
         "expected `{actual}` to contain `{expected_fragment}`"
     );
 }
-
