@@ -5,9 +5,19 @@ edition = "2021"
 rust-version = "1.75"
 autoexamples = false
 license = "MIT OR Apache-2.0"
-description = "Framework-agnostic multipart/form-data parser for Rust"
-keywords = ["multipart", "upload", "axum", "actix", "hyper"]
+description = "Framework-agnostic multipart/form-data upload library"
+homepage = "https://github.com/sargsarmen/multigear"
+repository = "https://github.com/sargsarmen/multigear"
+keywords = ["multipart", "multipart-formdata", "multipart-uploads", "formdata", "upload", "axum", "actix", "hyper"]
 categories = ["web-programming", "asynchronous"]
+authors = ["Armen Sargsyan <sargsarmen@gmail.com>"]
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[package.metadata.playground]
+features = ["all"]
 
 [features]
 default = ["tokio-rt"]
