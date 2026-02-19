@@ -124,7 +124,7 @@ impl SelectedField {
 
 /// Strategy for matching incoming file fields.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Selector {
     /// Accept a single file for one named field.
     Single {
@@ -143,6 +143,7 @@ pub enum Selector {
     /// Reject all file parts.
     None,
     /// Accept files for any field name.
+    #[default]
     Any,
 }
 
@@ -206,12 +207,6 @@ impl Selector {
         }
 
         Ok(())
-    }
-}
-
-impl Default for Selector {
-    fn default() -> Self {
-        Self::Any
     }
 }
 
